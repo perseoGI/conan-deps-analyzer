@@ -4,7 +4,7 @@ from conan.internal.model.profile import Profile
 from collections import defaultdict
 from parser.fallback import fallback_evaluate, fallback_evaluate_cci
 from parser.utils import is_version_range, resolve_version_range
-from parser.condition import AndCondition, Condition, UnknownCondition, VersionCondition
+from parser.condition import Condition, UnknownCondition
 from typing import Dict, List
 from conan.api.conan_api import ConanAPI
 

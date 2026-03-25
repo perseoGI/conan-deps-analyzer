@@ -8,7 +8,6 @@ from conan.internal.loader import ConanFileLoader
 from conan.internal.graph.profile_node_definer import initialize_conanfile_profile
 from conan.internal.methods import run_configure_method
 from conan.internal.model.profile import Profile
-from conan.api.model import RecipeReference
 from parser.utils import (
     is_version_range,
     persistent_cache_by_file_mtime,
