@@ -20,7 +20,7 @@ class RecipeVisitor(ast.NodeVisitor):
 
     # Get all atributes of the class
     def visit_Assign(self, node):
-        if len(node.targets) == 1 and self.current_method == None:
+        if len(node.targets) == 1 and self.current_method is None:
             if isinstance(node.targets[0], ast.Name):
                 var_name = node.targets[0].id
                 self.attributes[var_name] = node

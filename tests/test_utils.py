@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 from conan.errors import ConanException
-from conan.tools.scm import Version
 
 from parser.utils import (
     get_available_versions_from_config,
