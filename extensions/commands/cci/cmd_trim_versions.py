@@ -53,7 +53,13 @@ def trim_versions(conan_api: ConanAPI, parser, *args):
     analyzer = (
         DependenciesAnalyzer(Path(args.recipes_path))
         .analyze(no_cache=args.no_cache)
-        .evaluate(conan_api, profile_host, profile_build, args.fallback, no_cache=args.no_cache)
+        .evaluate(
+            conan_api,
+            profile_host,
+            profile_build,
+            args.fallback,
+            no_cache=args.no_cache,
+        )
     )
 
     def confirmation(message):
@@ -82,13 +88,19 @@ def trim_versions(conan_api: ConanAPI, parser, *args):
         recipe_version_map[recipe] = num_versions
 
         if num_versions <= max_versions:
-            cli_out_write(f"    Skip: versions {num_versions} <= {max_versions}", fg=Color.BRIGHT_GREEN)
+            cli_out_write(
+                f"    Skip: versions {num_versions} <= {max_versions}",
+                fg=Color.BRIGHT_GREEN,
+            )
             continue
 
         # If there is at least a cci version we can't automate the task
         cci_versions = [version for version in versions if str(version).startswith("cci.")]
         if any(cci_versions):
-            cli_out_write(f"    Skip: Contains cci versions: {cci_versions}", fg=Color.BRIGHT_YELLOW)
+            cli_out_write(
+                f"    Skip: Contains cci versions: {cci_versions}",
+                fg=Color.BRIGHT_YELLOW,
+            )
             continue
 
         recipe_usages = analyzer.get_usages(recipe, only_default=args.only_default)
@@ -169,10 +181,14 @@ def trim_versions(conan_api: ConanAPI, parser, *args):
             valid_versions_to_remove = sorted(list(new_to_remove), reverse=True)
             new_versions_to_remove = valid_versions_to_remove[-diff:]
             if not new_versions_to_remove:
-                cli_out_write("    Could not find more versions to remove with this criteria", fg=Color.BRIGHT_RED)
+                cli_out_write(
+                    "    Could not find more versions to remove with this criteria",
+                    fg=Color.BRIGHT_RED,
+                )
                 return diff
             cli_out_write(
-                f"    Versions to remove added: {version_list_to_str(new_versions_to_remove)}", fg=Color.BRIGHT_RED
+                f"    Versions to remove added: {version_list_to_str(new_versions_to_remove)}",
+                fg=Color.BRIGHT_RED,
             )
             candidates |= set(new_versions_to_remove)
             diff = total_to_remove - len(candidates)
@@ -193,7 +209,11 @@ def trim_versions(conan_api: ConanAPI, parser, *args):
             if diff > 0 and confirmation(
                 f"    Still need to remove {diff} more versions, do you want to continue selecting versions used (NON DEFAULT) in CCI?"
             ):
-                diff = trim_other_versions(diff, candidates, default_usaged_versions | unknown_default_usaged_versions)
+                diff = trim_other_versions(
+                    diff,
+                    candidates,
+                    default_usaged_versions | unknown_default_usaged_versions,
+                )
                 if diff > 0 and confirmation(
                     f"    Still need to remove {diff} more versions, do you want to continue selecting versions used (UNKNOWN) in CCI?"
                 ):
@@ -304,10 +324,16 @@ def lint_recipe(recipes_path: Path, recipe: str, confirmation):
 
                 elif "conan-unreachable" in message["symbol"]:
                     if confirmation("      [Experimental] Remove previous dead code?"):
-                        cli_out_write("      This feature is not implemented yet", fg=Color.BRIGHT_RED)
+                        cli_out_write(
+                            "      This feature is not implemented yet",
+                            fg=Color.BRIGHT_RED,
+                        )
 
                 elif "conan-condition-evals-to-constant" in message["symbol"]:
                     if confirmation("      [Experimental] Remove previous condition on constant statement?"):
-                        cli_out_write("      This feature is not implemented yet", fg=Color.BRIGHT_RED)
+                        cli_out_write(
+                            "      This feature is not implemented yet",
+                            fg=Color.BRIGHT_RED,
+                        )
 
     Path("lint.json").unlink(missing_ok=True)

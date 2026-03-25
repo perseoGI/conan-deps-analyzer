@@ -1,0 +1,27 @@
+[project]
+name = "conan-deps-analyzer"
+version = "0.0.0"
+description = "Conan 2 custom commands for CCI-style recipe dependency analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+    "conan>=2.0",
+    "ruff>=0.15.7",
+    "mypy>=1.19.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 120
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["extensions/commands/cci"]
+addopts = "-q"

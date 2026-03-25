@@ -41,6 +41,7 @@ def persistent_cache_by_file_mtime(func):
 
     return wrapper
 
+
 def invalidate_cache_entry(file_path: Path):
     """Invalidate the cache entry for a specific file path."""
     call_hash = _hash_args(file_path)
@@ -98,7 +99,8 @@ def resolve_version_range(recipes_path: Path, dep_name: str, dep_version_range: 
             return str(version)
     return None
 
+
 def version_range_intersects(version_range_filter: str, version_range: str) -> bool:
     from conan.internal.model.version_range import VersionRange
-    return VersionRange(version_range_filter[1:-1]).intersection(VersionRange(version_range[1:-1])) is not None
 
+    return VersionRange(version_range_filter[1:-1]).intersection(VersionRange(version_range[1:-1])) is not None

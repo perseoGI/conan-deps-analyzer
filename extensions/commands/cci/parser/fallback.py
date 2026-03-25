@@ -9,22 +9,25 @@ from conan.internal.graph.profile_node_definer import initialize_conanfile_profi
 from conan.internal.methods import run_configure_method
 from conan.internal.model.profile import Profile
 from conan.api.model import RecipeReference
-from parser.utils import is_version_range, persistent_cache_by_file_mtime, resolve_version_range
+from parser.utils import (
+    is_version_range,
+    persistent_cache_by_file_mtime,
+    resolve_version_range,
+)
 from conan.api.conan_api import ConanAPI
 from typing import Dict, Iterable
 from collections import defaultdict
 
 
 @lru_cache(maxsize=32)
-def fallback_evaluate(
-    recipe_path: Path, version: str, profile_host: Profile, profile_build: Profile
-):
+def fallback_evaluate(recipe_path: Path, version: str, profile_host: Profile, profile_build: Profile):
     name = recipe_path.parent.parent.name
     ref = RecipeReference(name, version, "", "")
     if profile_host or profile_build:
         if not (conanfile := load_conanfile(recipe_path, ref)):
             return None
         return retrive_deps(recipe_path, profile_host, profile_build, conanfile, ref)
+
 
 @persistent_cache_by_file_mtime
 def fallback_evaluate_cci(recipe_path: Path, version: str, conan_api: ConanAPI):

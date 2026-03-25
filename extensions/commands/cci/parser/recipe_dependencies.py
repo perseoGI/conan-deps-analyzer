@@ -120,10 +120,18 @@ class RecipeDependencies:
                     if isinstance(condition, UnknownCondition):
                         default = "Unknown"
                         if profile_host or profile_build:
-                            fallback_deps = fallback_evaluate(self.conanfile_path, version, profile_host, profile_build)
+                            fallback_deps = fallback_evaluate(
+                                self.conanfile_path,
+                                version,
+                                profile_host,
+                                profile_build,
+                            )
                         elif fallback:
                             fallback_deps = fallback_evaluate_cci(
-                                self.conanfile_path, version, conan_api, no_cache=no_cache
+                                self.conanfile_path,
+                                version,
+                                conan_api,
+                                no_cache=no_cache,
                             )
                         else:
                             fallback_deps = None
@@ -136,7 +144,9 @@ class RecipeDependencies:
                             )
                     else:
                         default = condition.evaluate(
-                            version=version, profile_host=profile_host, profile_build=profile_build
+                            version=version,
+                            profile_host=profile_host,
+                            profile_build=profile_build,
                         )
                     # Avoid printing Version dependant dependencies when default is False
                     if not condition.printable:

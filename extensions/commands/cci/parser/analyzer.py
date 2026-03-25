@@ -83,7 +83,10 @@ class DependenciesAnalyzer:
         return result
 
     def get_usages(
-        self, ref: str | None = None, only_default: bool = False, transitive: bool = False
+        self,
+        ref: str | None = None,
+        only_default: bool = False,
+        transitive: bool = False,
     ) -> Dict[str, Usages]:
         result = {}
         if ref:

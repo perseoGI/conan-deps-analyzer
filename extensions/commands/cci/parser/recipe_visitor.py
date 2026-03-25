@@ -124,7 +124,6 @@ class RecipeVisitor(ast.NodeVisitor):
                 node = getattr(node, "parent", None)
         return None
 
-
     def parse_part(self, node, value, context: str):
         if isinstance(value, ast.Constant):
             return value.value
@@ -364,4 +363,3 @@ class RecipeVisitor(ast.NodeVisitor):
                     raise ValueError(f"Error evaluating dict comprehension: {e}")
 
         return result
-

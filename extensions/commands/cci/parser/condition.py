@@ -10,7 +10,10 @@ class Condition(ABC):
 
     @abstractmethod
     def evaluate(
-        self, version: str | None = None, profile_host: Profile | None = None, profile_build: Profile | None = None
+        self,
+        version: str | None = None,
+        profile_host: Profile | None = None,
+        profile_build: Profile | None = None,
     ) -> bool:
         pass
 
@@ -44,7 +47,12 @@ class NoCondition(Condition):
     Represents a neutral/undefined condition — could be treated as 'always true' or skipped.
     """
 
-    def evaluate(self, version=None, profile_host: Profile | None = None, profile_build: Profile | None = None) -> bool:
+    def evaluate(
+        self,
+        version=None,
+        profile_host: Profile | None = None,
+        profile_build: Profile | None = None,
+    ) -> bool:
         return True  # or `return None` if you want to treat it as unset
 
     def __str__(self) -> str:
@@ -58,7 +66,12 @@ class NoCondition(Condition):
 
 
 class UnknownCondition(Condition):
-    def evaluate(self, version=None, profile_host: Profile | None = None, profile_build: Profile | None = None) -> bool:
+    def evaluate(
+        self,
+        version=None,
+        profile_host: Profile | None = None,
+        profile_build: Profile | None = None,
+    ) -> bool:
         return False  # It will never be evaluated
 
 
@@ -66,7 +79,12 @@ class ConstantCondition(Condition):
     def __init__(self, value: bool):
         self.value = value
 
-    def evaluate(self, version=None, profile_host: Profile | None = None, profile_build: Profile | None = None) -> bool:
+    def evaluate(
+        self,
+        version=None,
+        profile_host: Profile | None = None,
+        profile_build: Profile | None = None,
+    ) -> bool:
         return self.value
 
     def __invert__(self) -> Condition:
@@ -78,7 +96,12 @@ class VersionCondition(Condition):
     def __init__(self, version_map: Dict[str, bool]):
         self.version_map = version_map
 
-    def evaluate(self, version=None, profile_host: Profile | None = None, profile_build: Profile | None = None) -> bool:
+    def evaluate(
+        self,
+        version=None,
+        profile_host: Profile | None = None,
+        profile_build: Profile | None = None,
+    ) -> bool:
         result = self.version_map[Version(version)]
         self._printable = result
         return result
@@ -117,7 +140,12 @@ class ProfileDependentCondition(Condition):
         self.build_context = build_context  # If True, use settings_build instead of settings
         self.check_cross_building = check_cross_building
 
-    def evaluate(self, version=None, profile_host: Profile | None = None, profile_build: Profile | None = None) -> bool:
+    def evaluate(
+        self,
+        version=None,
+        profile_host: Profile | None = None,
+        profile_build: Profile | None = None,
+    ) -> bool:
         if self.admited_settings:
             return self.evaluate_settings(profile_host, profile_build)
         if self.admited_conf:
@@ -171,7 +199,12 @@ class AndCondition(Condition):
     def __init__(self, cond: Condition, *conditions):
         self.conditions = [cond] + list(conditions)
 
-    def evaluate(self, version=None, profile_host: Profile | None = None, profile_build: Profile | None = None) -> bool:
+    def evaluate(
+        self,
+        version=None,
+        profile_host: Profile | None = None,
+        profile_build: Profile | None = None,
+    ) -> bool:
         return all(cond.evaluate(version, profile_host, profile_build) for cond in self.conditions)
 
     @property
@@ -198,7 +231,12 @@ class OrCondition(Condition):
     def __init__(self, cond: Condition, *conditions):
         self.conditions = [cond] + list(conditions)
 
-    def evaluate(self, version=None, profile_host: Profile | None = None, profile_build: Profile | None = None) -> bool:
+    def evaluate(
+        self,
+        version=None,
+        profile_host: Profile | None = None,
+        profile_build: Profile | None = None,
+    ) -> bool:
         return any(cond.evaluate(version, profile_host, profile_build) for cond in self.conditions)
 
     @property

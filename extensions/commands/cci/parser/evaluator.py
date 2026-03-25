@@ -64,12 +64,16 @@ class ConditionEvaluator:
                     operator=type(condition.ops[0]),
                 )
             # Case: self.settings comparison
-            elif condition.left.value.attr in ("settings", "settings_build", "_settings_build") and isinstance(
-                condition.left.attr, str
-            ):
+            elif condition.left.value.attr in (
+                "settings",
+                "settings_build",
+                "_settings_build",
+            ) and isinstance(condition.left.attr, str):
                 setting = condition.left.attr
                 parsed = self.handle_setting_comparison(
-                    condition, setting, build_context=condition.left.value.attr != "settings"
+                    condition,
+                    setting,
+                    build_context=condition.left.value.attr != "settings",
                 )
 
         elif isinstance(condition, ast.Constant):
@@ -147,7 +151,9 @@ class ConditionEvaluator:
         else:
             return UnknownCondition()
         return ProfileDependentCondition(
-            admited_settings={setting: (compared_values)}, operator=type(op), build_context=build_context
+            admited_settings={setting: (compared_values)},
+            operator=type(op),
+            build_context=build_context,
         )
 
     def handle_conditional_option(self, option, compared_value=True, operator=ast.Eq):

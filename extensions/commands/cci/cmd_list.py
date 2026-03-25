@@ -73,7 +73,11 @@ def list_versions(conan_api: ConanAPI, parser, subparser, *args):
 
     analyzer = DependenciesAnalyzer(Path(args.recipes_path)).analyze(no_cache=args.no_cache)
     recipe_version_map = analyzer.get_versions(
-        args.reference, min_filter, max_filter, only_referenced=args.only_referenced, only_default=args.only_default
+        args.reference,
+        min_filter,
+        max_filter,
+        only_referenced=args.only_referenced,
+        only_default=args.only_default,
     )
     versions = [len(versions) for _, versions in recipe_version_map.items()]
     avg = sum(versions) / len(versions)
@@ -102,7 +106,11 @@ def output_tapaholes(result: dict) -> None:
 
 
 @conan_subcommand(
-    formatters={"text": lambda usages: print_usages(usages), "json": output_json, "tapaholes": output_tapaholes}
+    formatters={
+        "text": lambda usages: print_usages(usages),
+        "json": output_json,
+        "tapaholes": output_tapaholes,
+    }
 )
 def list_usages(conan_api: ConanAPI, parser, subparser, *args):
     """
@@ -110,14 +118,30 @@ def list_usages(conan_api: ConanAPI, parser, subparser, *args):
     """
     add_reference_args(subparser)
     add_profiles_args(subparser)
-    subparser.add_argument("--transitive", "-t", help="Calculate transitive usages", action="store_true", default=False)
+    subparser.add_argument(
+        "--transitive",
+        "-t",
+        help="Calculate transitive usages",
+        action="store_true",
+        default=False,
+    )
     args = parser.parse_args(*args)
     profile_host, profile_build = resolve_profile_args(conan_api, args)
     return (
         DependenciesAnalyzer(Path(args.recipes_path))
         .analyze(no_cache=args.no_cache)
-        .evaluate(conan_api, profile_host, profile_build, args.fallback, no_cache=args.no_cache)
-        .get_usages(ref=args.reference, only_default=args.only_default, transitive=args.transitive)
+        .evaluate(
+            conan_api,
+            profile_host,
+            profile_build,
+            args.fallback,
+            no_cache=args.no_cache,
+        )
+        .get_usages(
+            ref=args.reference,
+            only_default=args.only_default,
+            transitive=args.transitive,
+        )
     )
 
 
@@ -135,7 +159,13 @@ def list_dependencies(conan_api: ConanAPI, parser, subparser, *args):
     return (
         DependenciesAnalyzer(Path(args.recipes_path))
         .analyze(no_cache=args.no_cache)
-        .evaluate(conan_api, profile_host, profile_build, args.fallback, no_cache=args.no_cache)
+        .evaluate(
+            conan_api,
+            profile_host,
+            profile_build,
+            args.fallback,
+            no_cache=args.no_cache,
+        )
         .get_dependencies(ref=args.reference, only_default=args.only_default)
     )
 
