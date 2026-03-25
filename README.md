@@ -23,7 +23,7 @@ The tool statically analyzes `conanfile.py` files using Python's AST to extract 
 Install the custom commands using [`conan config install`](https://docs.conan.io/2/reference/commands/config.html#conan-config-install):
 
 ```bash
-conan config install https://github.com/perseoGI/conan-deps-analyzer.git
+conan config install https://github.com/perseoGI/conan-deps-analyzer.git -sf extensions
 ```
 
 The commands will then be available under the `cci` group in the Conan CLI.
