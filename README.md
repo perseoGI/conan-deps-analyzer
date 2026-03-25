@@ -1,5 +1,9 @@
 # 📦 Conan Dependency Analyzer
 
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![CI](https://img.shields.io/github/actions/workflow/status/perseoGI/conan-deps-analyzer/ci.yml?branch=main&label=CI)](https://github.com/perseoGI/conan-deps-analyzer/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A set of [Conan 2 Custom Commands](https://docs.conan.io/2/reference/extensions/custom_commands.html) for parsing and analyzing dependency graphs in [Conan Center Index](https://github.com/conan-io/conan-center-index)-style recipe repositories.
 
 The tool statically analyzes `conanfile.py` files using Python's AST to extract dependency information without executing the recipes, then optionally evaluates conditional dependencies against Conan profiles.
