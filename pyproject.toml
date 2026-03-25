@@ -12,6 +12,7 @@ dev = [
     "conan>=2.0",
     "ruff>=0.15.7",
     "mypy>=1.19.1",
+    "pytest-cov>=7.1.0",
 ]
 
 [build-system]

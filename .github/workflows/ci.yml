@@ -63,4 +63,4 @@ jobs:
         run: uv sync --dev
 
       - name: Tests
-        run: uv run pytest --cov=conan_linter tests --cov-report xml
+        run: uv run pytest --cov=extensions tests --cov-report xml
