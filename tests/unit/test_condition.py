@@ -1,5 +1,6 @@
 import ast
 
+import pytest
 from conan.tools.scm import Version
 
 from parser.condition import (
