@@ -48,9 +48,7 @@ def test_mixed_conds_extracts_version_zlib_os_and_helpers():
         ("Macos", False, True, True, False),
     ],
 )
-def test_mixed_conds_evaluate_os_profiles(
-    host_os, expect_msvc, expect_apple, expect_posix, expect_win_gnu
-):
+def test_mixed_conds_evaluate_os_profiles(host_os, expect_msvc, expect_apple, expect_posix, expect_win_gnu):
     path = conanfile_in(_CASE)
     deps = extract_conan_dependencies(path, no_cache=True)
     host = functional_profile(host_os)
