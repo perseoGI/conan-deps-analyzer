@@ -1,0 +1,4 @@
+sources:
+  "1.0.0":
+    url: "https://example.invalid/unknown-local-loader-1.0.0.tar.gz"
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000"
