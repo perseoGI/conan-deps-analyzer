@@ -71,3 +71,5 @@ def extract_requirement(deps: RecipeDependencies, visitor: RecipeVisitor, node, 
                 dep_type,
                 condition,
             )
+    # elif isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add):
+    #     breakpoint()
