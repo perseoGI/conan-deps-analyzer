@@ -28,14 +28,14 @@ jobs:
         run: uv sync -p 3.12 --only-dev
 
       - name: Format
-        run: uv run ruff format --check extensions tests
+        run: uv run ruff format --check conan_config tests
 
       - name: Static Analysis
         continue-on-error: true
-        run: uv run mypy extensions
+        run: uv run mypy conan_config
 
       - name: Lint
-        run: uv run ruff check extensions tests
+        run: uv run ruff check conan_config tests
 
   test:
     name: Tests
@@ -63,4 +63,4 @@ jobs:
         run: uv sync --dev
 
       - name: Tests
-        run: uv run pytest --cov=extensions tests --cov-report xml
+        run: uv run pytest --cov=conan_config tests --cov-report xml
