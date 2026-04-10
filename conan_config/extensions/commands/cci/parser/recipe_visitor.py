@@ -114,6 +114,8 @@ class RecipeVisitor(ast.NodeVisitor):
         Given a list of target nodes and a starting node, walk backwards (up and siblings)
         to find the closest matching node from the list.
         """
+        if not nodes:
+            return None
         node = start_node
         while node:
             if node in nodes:

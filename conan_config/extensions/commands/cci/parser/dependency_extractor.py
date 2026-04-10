@@ -8,6 +8,8 @@ import ast
 from pathlib import Path
 import tokenize
 
+_MAX_REQUIREMENT_EXPR_DEPTH = 12
+
 
 @persistent_cache_by_file_mtime
 def extract_conan_dependencies(recipe_path: Path):
@@ -35,18 +37,32 @@ def extract_requirement(deps: RecipeDependencies, visitor: RecipeVisitor, node, 
 
     condition = ConditionEvaluator(visitor).parse(conditions)
     context = "requirements" if dep_type == "requires" else "build_requirements"
+    _add_requirement_from_expr(deps, visitor, arg, node, condition, context, dep_type, depth=0)
 
-    # Case: self.requires("pkg/1.0")
-    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-        dep = arg.value
+
+def _add_requirement_from_expr(
+    deps: RecipeDependencies,
+    visitor: RecipeVisitor,
+    expr: ast.AST,
+    call_node: ast.Call,
+    condition,
+    context: str,
+    dep_type: str,
+    depth: int,
+):
+    if depth > _MAX_REQUIREMENT_EXPR_DEPTH:
+        return
+
+    if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+        dep = expr.value
         dep_name, dep_version = dep.split("/")
         deps.add(dep_name, dep_version, dep_type, condition)
 
-    elif isinstance(arg, ast.JoinedStr):
+    elif isinstance(expr, ast.JoinedStr):
         version_map = {}
         requirement = ""
-        for value in arg.values:
-            result = visitor.parse_part(node, value, context)
+        for value in expr.values:
+            result = visitor.parse_part(call_node, value, context)
             if isinstance(result, str):
                 requirement += result
             else:
@@ -71,5 +87,11 @@ def extract_requirement(deps: RecipeDependencies, visitor: RecipeVisitor, node, 
                 dep_type,
                 condition,
             )
-    # elif isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add):
-    #     breakpoint()
+
+    elif isinstance(expr, ast.Name):
+        assign = visitor.get_local_assignments(expr.id, call_node, context)
+        if assign is None:
+            return
+        _add_requirement_from_expr(
+            deps, visitor, assign.value, call_node, condition, context, dep_type, depth + 1
+        )
