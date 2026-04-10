@@ -4,7 +4,7 @@ from conan.internal.model.profile import Profile
 from collections import defaultdict
 from parser.fallback import fallback_evaluate, fallback_evaluate_cci
 from parser.utils import is_version_range, resolve_version_range
-from parser.condition import Condition, UnknownCondition
+from parser.condition import AndCondition, Condition, UnknownCondition, VersionCondition
 from typing import Dict, List
 from conan.api.conan_api import ConanAPI
 
@@ -148,7 +148,13 @@ class RecipeDependencies:
                             profile_host=profile_host,
                             profile_build=profile_build,
                         )
-                    # Avoid printing Version dependant dependencies when default is False
-                    if not condition.printable:
+                    # Avoid printing Version dependant dependencies when default is False.
+                    # Exception: And of VersionCondition only — each child sets printable from its
+                    # own branch, but the combined boolean must still be stored (e.g. compound
+                    # (not V < a) and (not V < b)).
+                    all_version_and = isinstance(condition, AndCondition) and all(
+                        isinstance(c, VersionCondition) for c in condition.conditions
+                    )
+                    if not condition.printable and not all_version_and:
                         continue
                     meta.default = default
