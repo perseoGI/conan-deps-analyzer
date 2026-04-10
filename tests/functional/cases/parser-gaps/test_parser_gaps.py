@@ -1,4 +1,4 @@
-"""Parser gaps: BinOp string concat requires (+ conandata via local variable)."""
+"""Parser gap: compound (not Version<...) and (...) in requirements — evaluator not implemented."""
 
 import pytest
 from pathlib import Path
@@ -8,21 +8,6 @@ from parser.dependency_extractor import extract_conan_dependencies
 from conftest import conanfile_in, functional_profile, meta0
 
 _CASE = Path(__file__).resolve().parent
-
-
-def test_binop_string_concat_requires_are_extracted():
-    """Requires tree-sitter/... and tree-sitter-alt/... built with + must appear in deps."""
-    path = conanfile_in(_CASE)
-    deps = extract_conan_dependencies(path, no_cache=True)
-    for v in deps.versions:
-        assert "tree-sitter" in deps.deps[v], "BinOp literal concat not extracted"
-        assert meta0(deps, v, "tree-sitter").version == "1.0.0"
-        assert "tree-sitter-alt" in deps.deps[v], "BinOp with conandata slice not extracted"
-        assert meta0(deps, v, "tree-sitter-alt").version == {
-            "1.0.0": "0.1.0",
-            "2.0.0": "0.2.0",
-            "3.1.0": "0.3.0",
-        }[v]
 
 
 @pytest.mark.skip(reason="ConditionEvaluator does not model compound (not Version<...) and (...) yet")

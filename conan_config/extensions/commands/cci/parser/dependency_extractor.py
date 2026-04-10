@@ -47,9 +47,7 @@ def flatten_add_operands(expr: ast.AST) -> list[ast.AST]:
     return [expr]
 
 
-def _resolve_joinedstr_parts(
-    visitor: RecipeVisitor, values, call_node: ast.Call, context: str
-) -> tuple[str, dict]:
+def _resolve_joinedstr_parts(visitor: RecipeVisitor, values, call_node: ast.Call, context: str) -> tuple[str, dict]:
     version_map: dict = {}
     requirement = ""
     for value in values:
@@ -151,9 +149,7 @@ def _add_requirement_from_binop_add(
     for part in flatten_add_operands(binop):
         if not _fold_concat_operand_into(visitor, part, call_node, context, acc, depth + 1):
             return
-    _add_from_resolved_requirement(
-        deps, acc["requirement"], acc["version_map"], dep_type, condition
-    )
+    _add_from_resolved_requirement(deps, acc["requirement"], acc["version_map"], dep_type, condition)
 
 
 def _add_requirement_from_expr(
@@ -177,14 +173,10 @@ def _add_requirement_from_expr(
         _add_from_resolved_requirement(deps, requirement, version_map, dep_type, condition)
 
     elif isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add):
-        _add_requirement_from_binop_add(
-            deps, visitor, expr, call_node, condition, context, dep_type, depth
-        )
+        _add_requirement_from_binop_add(deps, visitor, expr, call_node, condition, context, dep_type, depth)
 
     elif isinstance(expr, ast.Name):
         assign = visitor.get_local_assignments(expr.id, call_node, context)
         if assign is None:
             return
-        _add_requirement_from_expr(
-            deps, visitor, assign.value, call_node, condition, context, dep_type, depth + 1
-        )
+        _add_requirement_from_expr(deps, visitor, assign.value, call_node, condition, context, dep_type, depth + 1)
