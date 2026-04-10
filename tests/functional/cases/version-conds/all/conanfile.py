@@ -13,3 +13,6 @@ class PkgConan(ConanFile):
             self.requires("modern-x/9.9.9")
         if Version(self.version) == "2.0.0":
             self.requires("exact-pin/5.5.5")
+
+        if (not Version(self.version) < "2.3.5") and (not Version(self.version) < "3.0.0"):
+            self.requires("gap-pkg/1.0.0")
