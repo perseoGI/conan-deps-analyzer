@@ -45,19 +45,36 @@ class DependenciesAnalyzer:
         self.with_profiles = profile_host is not None or profile_build is not None
         return self
 
-    def get_dependencies(self, ref: str | None = None, only_default: bool = False) -> Dict[str, Dependencies]:
+    def get_dependencies(
+        self,
+        ref: str | None = None,
+        only_default: bool = False,
+        *,
+        only_version_range: bool = False,
+    ) -> Dict[str, Dependencies]:
         dependencies = {}
         if ref:
             recipe_name, version = ref.split("/") if "/" in ref else (ref, None)
             if recipe_name not in self.dependencies:
                 raise ConanException(f"Recipe {recipe_name} not found in dependencies.")
-            dependencies[recipe_name] = self._get_dependencies(recipe_name, version, only_default)
+            dependencies[recipe_name] = self._get_dependencies(
+                recipe_name, version, only_default, only_version_range=only_version_range
+            )
         else:
             for recipe_name in self.dependencies.keys():
-                dependencies[recipe_name] = self._get_dependencies(recipe_name, None, only_default)
+                dependencies[recipe_name] = self._get_dependencies(
+                    recipe_name, None, only_default, only_version_range=only_version_range
+                )
         return dependencies
 
-    def _get_dependencies(self, recipe_name, version_filter: str | None, only_default: bool) -> Dependencies:
+    def _get_dependencies(
+        self,
+        recipe_name,
+        version_filter: str | None,
+        only_default: bool,
+        *,
+        only_version_range: bool = False,
+    ) -> Dependencies:
         result: Dependencies = defaultdict(dict)
         version_range = is_version_range(version_filter) if version_filter else False
         for recipe_dependencies in self.dependencies[recipe_name]:
@@ -69,6 +86,8 @@ class DependenciesAnalyzer:
                 ):
                     for dep, meta_list in dependencies.items():
                         for meta in meta_list:
+                            if only_version_range and not meta.version_range:
+                                continue
                             if not only_default or meta.default:
                                 result[version].setdefault(dep, []).append(
                                     Meta(
@@ -100,9 +119,7 @@ class DependenciesAnalyzer:
             if transitive:
                 to_process = self._add_transitives_to_process(result[recipe_name])
                 result.update(
-                    self._get_usages_transitive(
-                        only_default, to_process, only_version_range=only_version_range
-                    )
+                    self._get_usages_transitive(only_default, to_process, only_version_range=only_version_range)
                 )
         else:
             if transitive:
@@ -123,9 +140,7 @@ class DependenciesAnalyzer:
         result = {}
         while to_process:
             recipe_name, version = to_process.pop()
-            usages = self._get_usages(
-                recipe_name, version, only_default, only_version_range=only_version_range
-            )
+            usages = self._get_usages(recipe_name, version, only_default, only_version_range=only_version_range)
             if recipe_name not in result:
                 result[recipe_name] = usages
             else:

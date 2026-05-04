@@ -160,6 +160,12 @@ def list_dependencies(conan_api: ConanAPI, parser, subparser, *args):
 
     add_reference_args(subparser)
     add_profiles_args(subparser)
+    subparser.add_argument(
+        "--only-version-range",
+        help="List only dependencies declared with a version range",
+        action="store_true",
+        default=False,
+    )
     args = parser.parse_args(*args)
     profile_host, profile_build = resolve_profile_args(conan_api, args)
 
@@ -173,7 +179,11 @@ def list_dependencies(conan_api: ConanAPI, parser, subparser, *args):
             args.fallback,
             no_cache=args.no_cache,
         )
-        .get_dependencies(ref=args.reference, only_default=args.only_default)
+        .get_dependencies(
+            ref=args.reference,
+            only_default=args.only_default,
+            only_version_range=args.only_version_range,
+        )
     )
 
 

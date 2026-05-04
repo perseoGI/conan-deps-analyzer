@@ -10,8 +10,8 @@ The tool statically analyzes `conanfile.py` files using Python's AST to extract 
 
 ## ✨ Features
 
-- 📋 **Dependency listing** -- list all `requires` and `tool_requires` of any recipe, resolved per version.
-- 🔗 **Usage analysis** -- find which recipes depend on a given library, including transitive consumers.
+- 📋 **Dependency listing** -- list all `requires` and `tool_requires` of any recipe, resolved per version; optionally restrict to dependencies declared with a [version range](https://docs.conan.io/2/tutorial/versioning/version_ranges.html).
+- 🔗 **Usage analysis** -- find which recipes depend on a given library, including transitive consumers; optionally restrict to consumers that reference the library via a version range.
 - 📊 **Version inventory** -- list version counts across the repository with statistics (average, std deviation).
 - ✂️ **Version trimming** -- interactively remove old recipe versions based on cross-reference analysis and configurable heuristics, with automatic `config.yml`/`conandata.yml` cleanup and lint integration.
 - 🎯 **Profile-aware evaluation** -- resolve conditional dependencies (`if self.settings.os == ...`, `if self.options.foo`, etc.) against host/build profiles.
@@ -58,6 +58,9 @@ conan cci:list dependencies /path/to/recipes -r openssl -pr:h default
 # Only unconditionally-enabled dependencies
 conan cci:list dependencies /path/to/recipes -r openssl --only-default
 
+# Only dependencies declared with a version range (e.g. boost/[>=1.74.0 <2]), not pinned refs
+conan cci:list dependencies /path/to/recipes -r openssl --only-version-range
+
 # JSON output
 conan cci:list dependencies /path/to/recipes -r openssl -f json
 ```
@@ -75,6 +78,9 @@ conan cci:list usages /path/to/recipes -r zlib/1.3.1
 
 # Include transitive consumers
 conan cci:list usages /path/to/recipes -r zlib -t
+
+# Only consumers that depend on zlib via a version range (not a single pinned version)
+conan cci:list usages /path/to/recipes -r zlib --only-version-range
 
 # With profile evaluation
 conan cci:list usages /path/to/recipes -r zlib -pr:h default
@@ -119,6 +125,7 @@ conan cci:trim-versions /path/to/recipes --ignore-refs-file refs.json --confirm
 |---|---|
 | `-r`, `--reference` | Recipe reference (`name` or `name/version`). Omit to process all recipes. |
 | `--only-default` | Show only dependencies that are enabled by default (unconditional or with default options). |
+| `--only-version-range` | **list dependencies** / **list usages** only: include only edges where the requirement uses a Conan version range (`[...]`), not a pinned `name/version`. |
 | `--no-cache` | Bypass the persistent parse cache and re-analyze from source. |
 | `--fallback` | Use CCI profile-based fallback evaluation for conditions that can't be resolved statically. |
 | `-pr:h`, `-pr:b` | Standard Conan profile arguments for host/build profile evaluation. |
