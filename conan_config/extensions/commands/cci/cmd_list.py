@@ -125,6 +125,12 @@ def list_usages(conan_api: ConanAPI, parser, subparser, *args):
         action="store_true",
         default=False,
     )
+    subparser.add_argument(
+        "--only-version-range",
+        help="List only consumers that depend on the recipe via a version range",
+        action="store_true",
+        default=False,
+    )
     args = parser.parse_args(*args)
     profile_host, profile_build = resolve_profile_args(conan_api, args)
     return (
@@ -141,6 +147,7 @@ def list_usages(conan_api: ConanAPI, parser, subparser, *args):
             ref=args.reference,
             only_default=args.only_default,
             transitive=args.transitive,
+            only_version_range=args.only_version_range,
         )
     )
 

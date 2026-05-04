@@ -87,28 +87,45 @@ class DependenciesAnalyzer:
         ref: str | None = None,
         only_default: bool = False,
         transitive: bool = False,
+        only_version_range: bool = False,
     ) -> Dict[str, Usages]:
         result = {}
         if ref:
             recipe_name, version = ref.split("/") if "/" in ref else (ref, None)
             if recipe_name not in self.dependencies:
                 raise ConanException(f"Recipe {recipe_name} not found in dependencies.")
-            result[recipe_name] = self._get_usages(recipe_name, version, only_default)
+            result[recipe_name] = self._get_usages(
+                recipe_name, version, only_default, only_version_range=only_version_range
+            )
             if transitive:
                 to_process = self._add_transitives_to_process(result[recipe_name])
-                result.update(self._get_usages_transitive(only_default, to_process))
+                result.update(
+                    self._get_usages_transitive(
+                        only_default, to_process, only_version_range=only_version_range
+                    )
+                )
         else:
             if transitive:
                 raise ConanException("Transitive usages require a specific recipe reference.")
             for recipe_name in self.dependencies.keys():
-                result[recipe_name] = self._get_usages(recipe_name, None, only_default)
+                result[recipe_name] = self._get_usages(
+                    recipe_name, None, only_default, only_version_range=only_version_range
+                )
         return result
 
-    def _get_usages_transitive(self, only_default: bool, to_process: set[tuple[str, str]]) -> Dict[str, Usages]:
+    def _get_usages_transitive(
+        self,
+        only_default: bool,
+        to_process: set[tuple[str, str]],
+        *,
+        only_version_range: bool = False,
+    ) -> Dict[str, Usages]:
         result = {}
         while to_process:
             recipe_name, version = to_process.pop()
-            usages = self._get_usages(recipe_name, version, only_default)
+            usages = self._get_usages(
+                recipe_name, version, only_default, only_version_range=only_version_range
+            )
             if recipe_name not in result:
                 result[recipe_name] = usages
             else:
@@ -124,7 +141,14 @@ class DependenciesAnalyzer:
                     to_process.add((recipe_name, recipe_meta.version))
         return to_process
 
-    def _get_usages(self, recipe_name, version_filter: str | None, only_default: bool) -> Usages:
+    def _get_usages(
+        self,
+        recipe_name,
+        version_filter: str | None,
+        only_default: bool,
+        *,
+        only_version_range: bool = False,
+    ) -> Usages:
         result: Usages = defaultdict(dict)
         version_range = is_version_range(version_filter) if version_filter else False
 
@@ -147,6 +171,8 @@ class DependenciesAnalyzer:
                                     add_usage = True
 
                                 if add_usage:
+                                    if only_version_range and not meta.version_range:
+                                        continue
                                     default_usage = meta.default
                                     if not only_default or default_usage:
                                         # TODO
