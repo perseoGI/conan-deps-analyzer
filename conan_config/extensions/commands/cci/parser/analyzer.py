@@ -1,12 +1,17 @@
 from collections import defaultdict
 from pathlib import Path
 from parser.recipe_dependencies import RecipeDependencies, Dependencies, Meta, Usages
-from parser.utils import is_version_range, version_range_intersects
+from parser.utils import (
+    get_available_versions_from_config,
+    is_version_range,
+    missing_binaries_breaking_minor_line,
+    version_range_intersects,
+)
 from parser.dependency_extractor import extract_conan_dependencies
 from conan.internal.model.profile import Profile
 from conan.errors import ConanException
 from parser.condition import NoCondition
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from conan.tools.scm import Version
 from conan.api.conan_api import ConanAPI
 
@@ -202,6 +207,49 @@ class DependenciesAnalyzer:
                                             )
                                         )
         return result
+
+    @staticmethod
+    def _collect_missing_binaries_edges(usages: Dict[str, Usages]) -> Dict[Tuple[str, str], List[str | None]]:
+        edges: Dict[Tuple[str, str], List[str | None]] = defaultdict(list)
+        for _dep_name, usages_per_resolved in usages.items():
+            for resolved_key, consumers in usages_per_resolved.items():
+                for consumer, meta_list in consumers.items():
+                    for meta in meta_list:
+                        edges[(consumer, meta.version)].append(resolved_key)
+        return edges
+
+    def get_missing_binaries(self, ref: str, only_default: bool = False) -> Dict[str, Usages]:
+        dep_name, new_ver = ref.split("/", 1)
+        recipes_root = next(iter(self.dependencies.values()))[0].recipes_path
+        published = get_available_versions_from_config(recipes_root / dep_name / "config.yml")
+        latest_published = str(published[0])
+
+        usages = self.get_usages(
+            ref=f"{dep_name}/[>={new_ver}]",
+            only_default=only_default,
+            transitive=False,
+            only_version_range=True,
+        )
+        edges = self._collect_missing_binaries_edges(usages)
+        breaking: set[tuple[str, str]] = set()
+        for (consumer, consumer_ver), resolved_keys in edges.items():
+            uniq = list(dict.fromkeys(resolved_keys))
+            if any(missing_binaries_breaking_minor_line(r, new_ver, latest_published) for r in uniq):
+                breaking.add((consumer, consumer_ver))
+
+        out: Dict[str, Usages] = {}
+        for dep_key, per_resolved in usages.items():
+            filtered: Usages = {}
+            for resolved_key, consumers in per_resolved.items():
+                kept: dict[str, list[Meta]] = {}
+                for consumer, meta_list in consumers.items():
+                    if meta_list and (consumer, meta_list[0].version) in breaking:
+                        kept[consumer] = list(meta_list)
+                if kept:
+                    filtered[resolved_key] = kept
+            if filtered:
+                out[dep_key] = filtered
+        return out
 
     def get_versions(
         self,

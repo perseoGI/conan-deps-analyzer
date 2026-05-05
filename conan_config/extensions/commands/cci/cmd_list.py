@@ -187,6 +187,30 @@ def list_dependencies(conan_api: ConanAPI, parser, subparser, *args):
     )
 
 
+@conan_subcommand(formatters={"text": lambda u: print_usages(u), "json": output_json})
+def list_missing_binaries(conan_api: ConanAPI, parser, subparser, *args):
+    """
+    Usages of the dependency that would imply missing binaries for a hypothetical new version
+    (same output shape as list usages).
+    """
+    add_reference_args(subparser)
+    add_profiles_args(subparser)
+    args = parser.parse_args(*args)
+    profile_host, profile_build = resolve_profile_args(conan_api, args)
+    return (
+        DependenciesAnalyzer(Path(args.recipes_path))
+        .analyze(no_cache=args.no_cache)
+        .evaluate(
+            conan_api,
+            profile_host,
+            profile_build,
+            args.fallback,
+            no_cache=args.no_cache,
+        )
+        .get_missing_binaries(ref=args.reference, only_default=args.only_default)
+    )
+
+
 def add_reference_args(subparser):
     subparser.add_argument(
         "recipes_path",
