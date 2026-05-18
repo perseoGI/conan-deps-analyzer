@@ -4,10 +4,11 @@ from conan.api.output import Color, cli_out_write
 from conan.cli.command import conan_command, conan_subcommand
 from conan.cli.args import add_profiles_args
 from conan.cli.printers import print_profiles
-from parser.output import print_dependencies, print_usages, dump
+from parser.output import print_dependencies, print_missing_binaries, print_usages, dump
 from parser.analyzer import DependenciesAnalyzer
 from typing import Dict, List
 import json
+from conan.errors import ConanException
 
 
 @conan_command(group="Conan Center Index")
@@ -95,7 +96,7 @@ def output_json(result: dict) -> None:
     cli_out_write(dump(result))
 
 
-def output_tapaholes(result: dict) -> None:
+def output_compact(result: dict) -> None:
     dependant_revisions = []
     for recipe_version in result.values():
         for recipe_revision in recipe_version.values():
@@ -109,7 +110,7 @@ def output_tapaholes(result: dict) -> None:
     formatters={
         "text": lambda usages: print_usages(usages),
         "json": output_json,
-        "tapaholes": output_tapaholes,
+        "compact": output_compact,
     }
 )
 def list_usages(conan_api: ConanAPI, parser, subparser, *args):
@@ -132,6 +133,8 @@ def list_usages(conan_api: ConanAPI, parser, subparser, *args):
         default=False,
     )
     args = parser.parse_args(*args)
+    if not args.reference:
+        raise ConanException("missing-binaries requires --reference")
     profile_host, profile_build = resolve_profile_args(conan_api, args)
     return (
         DependenciesAnalyzer(Path(args.recipes_path))
@@ -184,6 +187,32 @@ def list_dependencies(conan_api: ConanAPI, parser, subparser, *args):
             only_default=args.only_default,
             only_version_range=args.only_version_range,
         )
+    )
+
+
+@conan_subcommand(formatters={"text": lambda mb: print_missing_binaries(mb), "json": output_json})
+def list_missing_binaries(conan_api: ConanAPI, parser, subparser, *args):
+    """
+    Usages of the dependency that would imply missing binaries for a hypothetical new version
+    (same output shape as list usages).
+    """
+    add_reference_args(subparser)
+    add_profiles_args(subparser)
+    args = parser.parse_args(*args)
+    if not args.reference:
+        raise ConanException("missing-binaries requires --reference")
+    profile_host, profile_build = resolve_profile_args(conan_api, args)
+    return (
+        DependenciesAnalyzer(Path(args.recipes_path))
+        .analyze(no_cache=args.no_cache)
+        .evaluate(
+            conan_api,
+            profile_host,
+            profile_build,
+            args.fallback,
+            no_cache=args.no_cache,
+        )
+        .get_missing_binaries(ref=args.reference, only_default=args.only_default)
     )
 
 

@@ -1,12 +1,17 @@
 from collections import defaultdict
 from pathlib import Path
 from parser.recipe_dependencies import RecipeDependencies, Dependencies, Meta, Usages
-from parser.utils import is_version_range, version_range_intersects
+from parser.utils import (
+    get_available_versions_from_config,
+    is_version_range,
+    missing_binaries_breaking_minor_line,
+    version_range_intersects,
+)
 from parser.dependency_extractor import extract_conan_dependencies
 from conan.internal.model.profile import Profile
 from conan.errors import ConanException
 from parser.condition import NoCondition
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from conan.tools.scm import Version
 from conan.api.conan_api import ConanAPI
 
@@ -201,6 +206,58 @@ class DependenciesAnalyzer:
                                                 version_range=meta.version_range,
                                             )
                                         )
+        return result
+
+    @staticmethod
+    def _collect_missing_binaries_edges(usages: Dict[str, Usages]) -> Dict[Tuple[str, str], List[str | None]]:
+        edges: Dict[Tuple[str, str], List[str | None]] = defaultdict(list)
+        for _dep_name, usages_per_resolved in usages.items():
+            for resolved_key, consumers in usages_per_resolved.items():
+                for consumer, meta_list in consumers.items():
+                    for meta in meta_list:
+                        edges[(consumer, meta.version)].append(resolved_key)
+        return edges
+
+    def get_missing_binaries(self, ref: str, only_default: bool = False) -> List[dict]:
+        if "/" not in ref:
+            raise ConanException(f"Reference must include version (name/version), got: {ref}")
+        dep_name, new_ver = ref.split("/", 1)
+        recipes_root = next(iter(self.dependencies.values()))[0].recipes_path
+        published = get_available_versions_from_config(recipes_root / dep_name / "config.yml")
+        latest_published = str(published[0])
+
+        usages = self.get_usages(
+            ref=f"{dep_name}/[>={new_ver}]",
+            only_default=only_default,
+            transitive=False,
+            only_version_range=True,
+        )
+
+        new_line = f"{Version(new_ver).major}.{Version(new_ver).minor}"
+        result: List[dict] = []
+        seen = set()
+        for _dep_name, per_resolved in usages.items():
+            for resolved_key, consumers in per_resolved.items():
+                if not missing_binaries_breaking_minor_line(resolved_key, new_ver, latest_published):
+                    continue
+                baseline = resolved_key if resolved_key is not None else latest_published
+                baseline_line = f"{Version(baseline).major}.{Version(baseline).minor}"
+                reason = f"compatibility broken: {baseline_line}.z -> {new_line}"
+                for consumer, meta_list in consumers.items():
+                    for meta in meta_list:
+                        row = (consumer, meta.version, resolved_key)
+                        if row in seen:
+                            continue
+                        seen.add(row)
+                        result.append(
+                            {
+                                "consumer": consumer,
+                                "consumer_version": meta.version,
+                                "dependency": dep_name,
+                                "resolved_dependency_version": resolved_key,
+                                "reason": reason,
+                            }
+                        )
         return result
 
     def get_versions(

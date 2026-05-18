@@ -104,3 +104,20 @@ def version_range_intersects(version_range_filter: str, version_range: str) -> b
     from conan.internal.model.version_range import VersionRange
 
     return VersionRange(version_range_filter[1:-1]).intersection(VersionRange(version_range[1:-1])) is not None
+
+
+def missing_binaries_breaking_minor_line(resolved_dep: str | None, new_version: str, latest_published: str) -> bool:
+    """
+    True when the hypothetical new_version crosses a different (major, minor) line than the
+    baseline resolution of the dependency (current resolved version, or latest published if
+    the range does not resolve yet).
+    """
+    baseline = resolved_dep if resolved_dep is not None else latest_published
+    if not baseline:
+        return True
+    try:
+        v_new = Version(new_version)
+        v_base = Version(baseline)
+        return (v_new.major, v_new.minor) != (v_base.major, v_base.minor)
+    except Exception:
+        return True
