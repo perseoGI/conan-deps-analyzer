@@ -218,7 +218,9 @@ class DependenciesAnalyzer:
                         edges[(consumer, meta.version)].append(resolved_key)
         return edges
 
-    def get_missing_binaries(self, ref: str, only_default: bool = False) -> Dict[str, Usages]:
+    def get_missing_binaries(self, ref: str, only_default: bool = False) -> List[dict]:
+        if "/" not in ref:
+            raise ConanException(f"Reference must include version (name/version), got: {ref}")
         dep_name, new_ver = ref.split("/", 1)
         recipes_root = next(iter(self.dependencies.values()))[0].recipes_path
         published = get_available_versions_from_config(recipes_root / dep_name / "config.yml")
@@ -230,26 +232,33 @@ class DependenciesAnalyzer:
             transitive=False,
             only_version_range=True,
         )
-        edges = self._collect_missing_binaries_edges(usages)
-        breaking: set[tuple[str, str]] = set()
-        for (consumer, consumer_ver), resolved_keys in edges.items():
-            uniq = list(dict.fromkeys(resolved_keys))
-            if any(missing_binaries_breaking_minor_line(r, new_ver, latest_published) for r in uniq):
-                breaking.add((consumer, consumer_ver))
 
-        out: Dict[str, Usages] = {}
-        for dep_key, per_resolved in usages.items():
-            filtered: Usages = {}
+        new_line = f"{Version(new_ver).major}.{Version(new_ver).minor}"
+        result: List[dict] = []
+        seen = set()
+        for _dep_name, per_resolved in usages.items():
             for resolved_key, consumers in per_resolved.items():
-                kept: dict[str, list[Meta]] = {}
+                if not missing_binaries_breaking_minor_line(resolved_key, new_ver, latest_published):
+                    continue
+                baseline = resolved_key if resolved_key is not None else latest_published
+                baseline_line = f"{Version(baseline).major}.{Version(baseline).minor}"
+                reason = f"compatibility broken: {baseline_line}.z -> {new_line}"
                 for consumer, meta_list in consumers.items():
-                    if meta_list and (consumer, meta_list[0].version) in breaking:
-                        kept[consumer] = list(meta_list)
-                if kept:
-                    filtered[resolved_key] = kept
-            if filtered:
-                out[dep_key] = filtered
-        return out
+                    for meta in meta_list:
+                        row = (consumer, meta.version, resolved_key)
+                        if row in seen:
+                            continue
+                        seen.add(row)
+                        result.append(
+                            {
+                                "consumer": consumer,
+                                "consumer_version": meta.version,
+                                "dependency": dep_name,
+                                "resolved_dependency_version": resolved_key,
+                                "reason": reason,
+                            }
+                        )
+        return result
 
     def get_versions(
         self,

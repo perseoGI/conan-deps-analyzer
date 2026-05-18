@@ -15,6 +15,24 @@ def print_usages(usages: dict[str, Usages]):
                     print_meta(recipe_name, detail)
 
 
+
+
+def print_missing_binaries(missing_binaries: List[dict]):
+    if not missing_binaries:
+        cli_out_write("No missing binaries", fg=Color.BRIGHT_YELLOW)
+        return
+    cli_out_write("Missing binaries", fg=Color.BRIGHT_YELLOW)
+    for item in missing_binaries:
+        dep = item.get("dependency")
+        resolved = item.get("resolved_dependency_version")
+        resolved_txt = resolved if resolved is not None else "unresolved"
+        cli_out_write(
+            f"- {item['consumer']}/{item['consumer_version']} -> {dep}/{resolved_txt}",
+            fg=Color.BRIGHT_GREEN,
+        )
+        cli_out_write(f"    reason: {item['reason']}", fg=Color.BRIGHT_BLUE)
+
+
 def print_dependencies(dependencies: Dict[str, Dependencies]):
     for recipe_name, deps in dependencies.items():
         cli_out_write(f"Dependencies of {recipe_name}", fg=Color.BRIGHT_YELLOW)
