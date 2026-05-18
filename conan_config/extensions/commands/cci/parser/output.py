@@ -15,8 +15,6 @@ def print_usages(usages: dict[str, Usages]):
                     print_meta(recipe_name, detail)
 
 
-
-
 def print_missing_binaries(missing_binaries: List[dict]):
     if not missing_binaries:
         cli_out_write("No missing binaries", fg=Color.BRIGHT_YELLOW)

@@ -106,9 +106,7 @@ def version_range_intersects(version_range_filter: str, version_range: str) -> b
     return VersionRange(version_range_filter[1:-1]).intersection(VersionRange(version_range[1:-1])) is not None
 
 
-def missing_binaries_breaking_minor_line(
-    resolved_dep: str | None, new_version: str, latest_published: str
-) -> bool:
+def missing_binaries_breaking_minor_line(resolved_dep: str | None, new_version: str, latest_published: str) -> bool:
     """
     True when the hypothetical new_version crosses a different (major, minor) line than the
     baseline resolution of the dependency (current resolved version, or latest published if
