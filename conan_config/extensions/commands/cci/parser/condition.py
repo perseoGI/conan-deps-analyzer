@@ -168,7 +168,7 @@ class ProfileDependentCondition(Condition):
             if self.operator == ast.NotIn:
                 result = len(intersection) != len(valid_values) if len(possible_values) > 1 else len(intersection) == 0
             elif self.operator == ast.NotEq:
-                result = intersection if len(possible_values) > 1 else not intersection
+                result = bool(possible_values - valid_values) if len(possible_values) > 1 else not intersection
             else:
                 result = any(intersection)
             if not result:

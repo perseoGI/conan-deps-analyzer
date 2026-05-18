@@ -77,3 +77,41 @@ def test_profile_dependent_cross_building_requires_both_profiles():
     build = Profile()
     build.settings = {"os": "Linux", "arch": "x86_64"}
     assert cond.evaluate(profile_host=host, profile_build=build) is False
+
+
+def test_profile_dependent_not_eq_with_non_default_value():
+    """os != 'Emscripten' should be True when possible values are Windows/Linux/Macos."""
+    from parser.condition import ProfileDependentCondition
+
+    cond = ProfileDependentCondition(admited_settings={"os": "Emscripten"}, operator=ast.NotEq)
+    assert cond.evaluate(profile_host=None, profile_build=None) is True
+
+
+def test_profile_dependent_not_eq_with_default_value():
+    """os != 'Windows' should be True when possible values include non-Windows."""
+    from parser.condition import ProfileDependentCondition
+
+    cond = ProfileDependentCondition(admited_settings={"os": "Windows"}, operator=ast.NotEq)
+    assert cond.evaluate(profile_host=None, profile_build=None) is True
+
+
+def test_profile_dependent_not_eq_single_value_match():
+    """os != 'Linux' should be False when the only possible value is Linux."""
+    from parser.condition import ProfileDependentCondition
+    from conan.internal.model.profile import Profile
+
+    host = Profile()
+    host.settings = {"os": "Linux"}
+    cond = ProfileDependentCondition(admited_settings={"os": "Linux"}, operator=ast.NotEq)
+    assert cond.evaluate(profile_host=host, profile_build=None) is False
+
+
+def test_profile_dependent_not_eq_single_value_no_match():
+    """os != 'Windows' should be True when the only possible value is Linux."""
+    from parser.condition import ProfileDependentCondition
+    from conan.internal.model.profile import Profile
+
+    host = Profile()
+    host.settings = {"os": "Linux"}
+    cond = ProfileDependentCondition(admited_settings={"os": "Windows"}, operator=ast.NotEq)
+    assert cond.evaluate(profile_host=host, profile_build=None) is True
