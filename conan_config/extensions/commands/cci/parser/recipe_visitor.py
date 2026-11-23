@@ -149,8 +149,13 @@ class RecipeVisitor(ast.NodeVisitor):
         # Case: self.requires(f"pkg/{pkg_version_mapping}")
         elif isinstance(value, ast.Name):
             result = self.get_local_assignments(value.id, node, context)
+            # Case: spirv_version = "1.4.357.0"; self.requires(f"pkg/{spirv_version}")
+            if isinstance(result.value, ast.Constant):
+                return result.value.value
             if self.is_conandata_access(result.value):
                 return self.handle_conandata_access(result.value.value.slice.value)
+            elif self.is_conandata_nested_access(result.value):
+                return self.handle_conandata_nested_access(result.value)
             elif isinstance(result.value, ast.IfExp):
                 condition = result.value.test
                 if self.is_version_comparison(condition):
@@ -164,7 +169,8 @@ class RecipeVisitor(ast.NodeVisitor):
                 else:
                     raise Exception("Unknown assignment second", value.id)
             else:
-                raise Exception("Unknown assignment", value.id)
+                # Unresolvable local assignment: general value
+                return "*"
 
         # Case: self.requires(f"pkg/{self.conan_data['pkg_mapping'][self.version]}")
         elif self.is_conandata_access(value):
@@ -237,6 +243,24 @@ class RecipeVisitor(ast.NodeVisitor):
             and value.slice.value.id == "self"
             and value.slice.attr == "version"
         )
+
+    def is_conandata_nested_access(self, value):
+        # self.conan_data["key"][self.version]["subkey"]
+        return (
+            isinstance(value, ast.Subscript)
+            and isinstance(value.slice, ast.Constant)
+            and self.is_conandata_access(value.value)
+        )
+
+    def handle_conandata_nested_access(self, value):
+        key = value.value.value.slice.value
+        subkey = value.slice.value
+        conandata = get_conandata(self.conanfile_path)
+        res = {}
+        for version in get_available_versions(self.conanfile_path):
+            entry = (conandata.get(key) or {}).get(str(version))
+            res[version] = entry.get(subkey, "*") if isinstance(entry, dict) else "*"
+        return res
 
     def handle_conandata_access(self, key):
         conandata = get_conandata(self.conanfile_path)
