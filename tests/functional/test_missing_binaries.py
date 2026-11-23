@@ -38,3 +38,22 @@ def test_missing_binaries_ref_without_version_raises():
 
     with pytest.raises(ConanException, match="must include version"):
         analyzer.get_missing_binaries(ref="map", only_default=False)
+
+
+def test_missing_binaries_honours_declared_package_id_mode():
+    """pkgid-patch declares patch_mode: a patch release changes consumers' package_id."""
+    analyzer = DependenciesAnalyzer(CASES_ROOT).analyze(no_cache=True)
+    result = analyzer.get_missing_binaries(ref="pkgid-patch/1.0.1", only_default=False)
+    consumers = {r["consumer"] for r in result}
+    assert "pkgid-patch-consumer" in consumers
+    # package_id() clears the requires, so its binaries never depend on pkgid-patch
+    assert "pkgid-clear-consumer" not in consumers
+    # tool_requires don't take part in the consumer's package_id
+    assert "pkgid-tool-consumer" not in consumers
+    assert "patch_mode" in next(r["reason"] for r in result if r["consumer"] == "pkgid-patch-consumer")
+
+
+def test_missing_binaries_default_mode_ignores_patch_release():
+    """range-consumer depends on map (no declared mode -> minor_mode): patch releases are harmless."""
+    analyzer = DependenciesAnalyzer(CASES_ROOT).analyze(no_cache=True)
+    assert analyzer.get_missing_binaries(ref="map/2.0.1", only_default=False) == []

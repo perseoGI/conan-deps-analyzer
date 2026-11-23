@@ -113,3 +113,14 @@ def test_missing_binaries_empty_baseline_returns_true():
     # Empty baseline means we can't compare, assume break
     assert missing_binaries_breaking_minor_line(None, "1.0.0", "") is True
     assert missing_binaries_breaking_minor_line("", "1.0.0", "") is True
+
+
+def test_new_version_would_be_selected():
+    from parser.utils import new_version_would_be_selected as f
+
+    assert f("[>=1.5 <3]", "2.0.0", "2.1.0") is True
+    assert f("[>=1.5 <3]", "2.0.0", "1.7.0") is False  # older than resolved
+    assert f("[>=1.5 <3]", "2.0.0", "1.0.5") is False  # outside range
+    assert f("[>=1.5 <3]", "2.0.0", "3.0.0") is False  # outside range
+    assert f("[>=1.5 <3]", None, "1.6.0") is True  # range resolves to nothing yet
+    assert f(None, "2.0.0", "2.1.0") is False
