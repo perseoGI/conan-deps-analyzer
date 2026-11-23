@@ -31,6 +31,26 @@ def print_missing_binaries(missing_binaries: List[dict]):
         cli_out_write(f"    reason: {item['reason']}", fg=Color.BRIGHT_BLUE)
 
 
+def print_missing_binaries_compact(missing_binaries: List[dict]):
+    if not missing_binaries:
+        return
+    seen = set()
+    for item in missing_binaries:
+        seen.add(f"{item['consumer']}/{item['consumer_version']}")
+    cli_out_write(" ".join(sorted(seen)))
+
+
+def print_usages_compact(usages: dict):
+    seen = set()
+    for recipe_version in usages.values():
+        for recipe_revision in recipe_version.values():
+            for dependant, dependant_usages in recipe_revision.items():
+                for usage in dependant_usages:
+                    seen.add(f"{dependant}/{usage.version}")
+    if seen:
+        cli_out_write(" ".join(sorted(seen)))
+
+
 def print_dependencies(dependencies: Dict[str, Dependencies]):
     for recipe_name, deps in dependencies.items():
         cli_out_write(f"Dependencies of {recipe_name}", fg=Color.BRIGHT_YELLOW)
