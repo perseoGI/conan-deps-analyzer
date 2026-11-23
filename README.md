@@ -12,6 +12,7 @@ The tool statically analyzes `conanfile.py` files using Python's AST to extract 
 
 - 📋 **Dependency listing** -- list all `requires` and `tool_requires` of any recipe, resolved per version; optionally restrict to dependencies declared with a [version range](https://docs.conan.io/2/tutorial/versioning/version_ranges.html).
 - 🔗 **Usage analysis** -- find which recipes depend on a given library, including transitive consumers; optionally restrict to consumers that reference the library via a version range.
+- 🔄 **Missing binaries prediction** -- identify consumers that would need new binaries when a hypothetical new version of a dependency is released (based on version range resolution and minor/major version changes).
 - 📊 **Version inventory** -- list version counts across the repository with statistics (average, std deviation).
 - ✂️ **Version trimming** -- interactively remove old recipe versions based on cross-reference analysis and configurable heuristics, with automatic `config.yml`/`conandata.yml` cleanup and lint integration.
 - 🎯 **Profile-aware evaluation** -- resolve conditional dependencies (`if self.settings.os == ...`, `if self.options.foo`, etc.) against host/build profiles.
@@ -84,6 +85,29 @@ conan cci:list usages /path/to/recipes -r zlib --only-version-range
 
 # With profile evaluation
 conan cci:list usages /path/to/recipes -r zlib -pr:h default
+
+# Compact output (space-separated list of consumer references)
+conan cci:list usages /path/to/recipes -r zlib -f compact
+# Output: foo/1.0.0 bar/2.1.0 baz/3.0.0
+```
+
+### 🔄 `conan cci:list missing-binaries`
+
+Find consumers that would require new binaries when a new version of a dependency is released. This is useful for identifying recipes that use version ranges and would be affected by a minor/major version bump.
+
+```bash
+# Find consumers affected by a hypothetical zlib/1.4.0 release
+conan cci:list missing-binaries /path/to/recipes -r zlib/1.4.0
+
+# With profile evaluation
+conan cci:list missing-binaries /path/to/recipes -r zlib/1.4.0 -pr:h default
+
+# Compact output (space-separated list of affected consumers)
+conan cci:list missing-binaries /path/to/recipes -r zlib/1.4.0 -f compact
+# Output: foo/1.0.0 bar/2.1.0 baz/3.0.0
+
+# JSON output
+conan cci:list missing-binaries /path/to/recipes -r zlib/1.4.0 -f json
 ```
 
 ### 📈 `conan cci:list versions`
@@ -130,3 +154,4 @@ conan cci:trim-versions /path/to/recipes --ignore-refs-file refs.json --confirm
 | `--fallback` | Use CCI profile-based fallback evaluation for conditions that can't be resolved statically. |
 | `-pr:h`, `-pr:b` | Standard Conan profile arguments for host/build profile evaluation. |
 | `-f json` | Output in JSON format. |
+| `-f compact` | **list usages** / **list missing-binaries** only: output as a space-separated list of references. |

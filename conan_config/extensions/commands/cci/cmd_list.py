@@ -4,7 +4,14 @@ from conan.api.output import Color, cli_out_write
 from conan.cli.command import conan_command, conan_subcommand
 from conan.cli.args import add_profiles_args
 from conan.cli.printers import print_profiles
-from parser.output import print_dependencies, print_missing_binaries, print_usages, dump
+from parser.output import (
+    print_dependencies,
+    print_missing_binaries,
+    print_missing_binaries_compact,
+    print_usages,
+    print_usages_compact,
+    dump,
+)
 from parser.analyzer import DependenciesAnalyzer
 from typing import Dict, List
 import json
@@ -96,21 +103,11 @@ def output_json(result: dict) -> None:
     cli_out_write(dump(result))
 
 
-def output_compact(result: dict) -> None:
-    dependant_revisions = []
-    for recipe_version in result.values():
-        for recipe_revision in recipe_version.values():
-            for dependant, usages in recipe_revision.items():
-                for usage in usages:
-                    dependant_revisions.append(f"{dependant}/{usage.version}")
-    cli_out_write("\n".join(dependant_revisions))
-
-
 @conan_subcommand(
     formatters={
         "text": lambda usages: print_usages(usages),
         "json": output_json,
-        "compact": output_compact,
+        "compact": lambda usages: print_usages_compact(usages),
     }
 )
 def list_usages(conan_api: ConanAPI, parser, subparser, *args):
@@ -190,7 +187,13 @@ def list_dependencies(conan_api: ConanAPI, parser, subparser, *args):
     )
 
 
-@conan_subcommand(formatters={"text": lambda mb: print_missing_binaries(mb), "json": output_json})
+@conan_subcommand(
+    formatters={
+        "text": lambda mb: print_missing_binaries(mb),
+        "json": output_json,
+        "compact": lambda mb: print_missing_binaries_compact(mb),
+    }
+)
 def list_missing_binaries(conan_api: ConanAPI, parser, subparser, *args):
     """
     Usages of the dependency that would imply missing binaries for a hypothetical new version
