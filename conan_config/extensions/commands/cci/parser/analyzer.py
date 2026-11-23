@@ -1,10 +1,14 @@
 from collections import defaultdict
 from pathlib import Path
 from parser.recipe_dependencies import RecipeDependencies, Dependencies, Meta, Usages
+from parser.package_id import (
+    clears_requires_in_package_id,
+    get_effective_mode,
+    version_change_affects_package_id,
+)
 from parser.utils import (
     get_available_versions_from_config,
     is_version_range,
-    missing_binaries_breaking_minor_line,
     new_version_would_be_selected,
     version_range_intersects,
 )
@@ -219,6 +223,14 @@ class DependenciesAnalyzer:
                         edges[(consumer, meta.version)].append(resolved_key)
         return edges
 
+    def _conanfile_path_for(self, recipe_name: str, version: str | None) -> Path:
+        """conanfile.py that defines `version` of the recipe (first one if not found)."""
+        entries = self.dependencies[recipe_name]
+        for entry in entries:
+            if version is not None and str(version) in entry.versions:
+                return Path(entry.conanfile_path)
+        return Path(entries[0].conanfile_path)
+
     def get_missing_binaries(self, ref: str, only_default: bool = False) -> List[dict]:
         if "/" not in ref:
             raise ConanException(f"Reference must include version (name/version), got: {ref}")
@@ -234,19 +246,20 @@ class DependenciesAnalyzer:
             only_version_range=True,
         )
 
-        new_line = f"{Version(new_ver).major}.{Version(new_ver).minor}"
+        dep_mode = get_effective_mode(self._conanfile_path_for(dep_name, latest_published))
         result: List[dict] = []
         seen = set()
         for _dep_name, per_resolved in usages.items():
             for resolved_key, consumers in per_resolved.items():
-                if not missing_binaries_breaking_minor_line(resolved_key, new_ver, latest_published):
-                    continue
                 baseline = resolved_key if resolved_key is not None else latest_published
-                baseline_line = f"{Version(baseline).major}.{Version(baseline).minor}"
-                reason = f"compatibility broken: {baseline_line}.z -> {new_line}"
+                if not baseline or not version_change_affects_package_id(dep_mode, baseline, new_ver):
+                    continue
+                reason = f"{dep_mode}: {baseline} -> {new_ver} changes the package_id"
                 for consumer, meta_list in consumers.items():
                     for meta in meta_list:
                         if not new_version_would_be_selected(meta.version_range, resolved_key, new_ver):
+                            continue
+                        if clears_requires_in_package_id(self._conanfile_path_for(consumer, meta.version)):
                             continue
                         row = (consumer, meta.version, resolved_key)
                         if row in seen:
