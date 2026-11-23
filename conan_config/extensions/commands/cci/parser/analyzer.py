@@ -207,6 +207,8 @@ class DependenciesAnalyzer:
                                             Meta(
                                                 version=version,
                                                 conditions=NoCondition() if only_default else meta.conditions,
+                                                requires=meta.requires,
+                                                tool_requires=meta.tool_requires,
                                                 default=default_usage,
                                                 version_range=meta.version_range,
                                             )
@@ -257,6 +259,9 @@ class DependenciesAnalyzer:
                 reason = f"{dep_mode}: {baseline} -> {new_ver} changes the package_id"
                 for consumer, meta_list in consumers.items():
                     for meta in meta_list:
+                        # build requirements don't take part in the consumer's package_id
+                        if meta.tool_requires and not meta.requires:
+                            continue
                         if not new_version_would_be_selected(meta.version_range, resolved_key, new_ver):
                             continue
                         if clears_requires_in_package_id(self._conanfile_path_for(consumer, meta.version)):

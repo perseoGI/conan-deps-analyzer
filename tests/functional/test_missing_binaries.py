@@ -48,6 +48,8 @@ def test_missing_binaries_honours_declared_package_id_mode():
     assert "pkgid-patch-consumer" in consumers
     # package_id() clears the requires, so its binaries never depend on pkgid-patch
     assert "pkgid-clear-consumer" not in consumers
+    # tool_requires don't take part in the consumer's package_id
+    assert "pkgid-tool-consumer" not in consumers
     assert "patch_mode" in next(r["reason"] for r in result if r["consumer"] == "pkgid-patch-consumer")
 
 
