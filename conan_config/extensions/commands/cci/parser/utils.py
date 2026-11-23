@@ -121,3 +121,19 @@ def missing_binaries_breaking_minor_line(resolved_dep: str | None, new_version: 
         return (v_new.major, v_new.minor) != (v_base.major, v_base.minor)
     except Exception:
         return True
+
+
+def new_version_would_be_selected(version_range: str | None, resolved_dep: str | None, new_version: str) -> bool:
+    """
+    True when a consumer requiring `version_range` (e.g. "[>=1.5 <3]") would resolve to new_version
+    once published: it must satisfy the range and be newer than the currently resolved version.
+    """
+    if not version_range:
+        return False
+    try:
+        v_new = Version(new_version)
+        if not v_new.in_range(version_range[1:-1]):
+            return False
+        return resolved_dep is None or v_new > Version(resolved_dep)
+    except Exception:
+        return True

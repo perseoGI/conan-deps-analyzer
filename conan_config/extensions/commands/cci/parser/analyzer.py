@@ -5,6 +5,7 @@ from parser.utils import (
     get_available_versions_from_config,
     is_version_range,
     missing_binaries_breaking_minor_line,
+    new_version_would_be_selected,
     version_range_intersects,
 )
 from parser.dependency_extractor import extract_conan_dependencies
@@ -245,6 +246,8 @@ class DependenciesAnalyzer:
                 reason = f"compatibility broken: {baseline_line}.z -> {new_line}"
                 for consumer, meta_list in consumers.items():
                     for meta in meta_list:
+                        if not new_version_would_be_selected(meta.version_range, resolved_key, new_ver):
+                            continue
                         row = (consumer, meta.version, resolved_key)
                         if row in seen:
                             continue
