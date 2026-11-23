@@ -4,7 +4,14 @@ from conan.api.output import Color, cli_out_write
 from conan.cli.command import conan_command, conan_subcommand
 from conan.cli.args import add_profiles_args
 from conan.cli.printers import print_profiles
-from parser.output import print_dependencies, print_missing_binaries, print_missing_binaries_compact, print_usages, print_usages_compact, dump
+from parser.output import (
+    print_dependencies,
+    print_missing_binaries,
+    print_missing_binaries_compact,
+    print_usages,
+    print_usages_compact,
+    dump,
+)
 from parser.analyzer import DependenciesAnalyzer
 from typing import Dict, List
 import json
@@ -180,11 +187,13 @@ def list_dependencies(conan_api: ConanAPI, parser, subparser, *args):
     )
 
 
-@conan_subcommand(formatters={
-    "text": lambda mb: print_missing_binaries(mb),
-    "json": output_json,
-    "compact": lambda mb: print_missing_binaries_compact(mb),
-})
+@conan_subcommand(
+    formatters={
+        "text": lambda mb: print_missing_binaries(mb),
+        "json": output_json,
+        "compact": lambda mb: print_missing_binaries_compact(mb),
+    }
+)
 def list_missing_binaries(conan_api: ConanAPI, parser, subparser, *args):
     """
     Usages of the dependency that would imply missing binaries for a hypothetical new version
