@@ -71,3 +71,58 @@ def test_transitive_usages_without_reference_raises():
     analyzer = DependenciesAnalyzer(CASES_ROOT).analyze(no_cache=True)
     with pytest.raises(ConanException, match="Transitive usages require"):
         analyzer.get_usages(transitive=True)
+
+
+@pytest.fixture
+def conditional_recipes(tmp_path):
+    """consumer requires liba unconditionally, libb only behind an option disabled by default and
+    libc through a version range that matches no published version."""
+
+    def recipe(name, versions, conanfile_body=""):
+        folder = tmp_path / name / "all"
+        folder.mkdir(parents=True)
+        entries = "".join(f'  "{v}":\n    folder: all\n' for v in versions)
+        (tmp_path / name / "config.yml").write_text(f"versions:\n{entries}")
+        (folder / "conandata.yml").write_text("sources: {}\n")
+        (folder / "conanfile.py").write_text(
+            f"from conan import ConanFile\n\nclass Recipe(ConanFile):\n    name = '{name}'\n{conanfile_body}"
+        )
+
+    recipe("liba", ["1.0"])
+    recipe("libb", ["2.0"])
+    recipe("libc", ["1.0"])
+    recipe(
+        "consumer",
+        ["1.0"],
+        textwrap.indent(
+            textwrap.dedent(
+                """
+                options = {"with_b": [True, False]}
+                default_options = {"with_b": False}
+
+                def requirements(self):
+                    self.requires("liba/1.0")
+                    self.requires("libc/[>=5]")
+                    if self.options.with_b:
+                        self.requires("libb/2.0")
+                """
+            ),
+            "    ",
+        ),
+    )
+    return tmp_path
+
+
+def test_versions_only_referenced_only_default_needs_evaluated_conditions(conditional_recipes):
+    analyzer = DependenciesAnalyzer(conditional_recipes).analyze(no_cache=True)
+    assert analyzer.get_versions(only_referenced=True)["libb"] == ["2.0"]
+
+    analyzer.evaluate(conan_api=None)
+    referenced_by_default = analyzer.get_versions(only_referenced=True, only_default=True, min_filter=1)
+    assert referenced_by_default == {"liba": ["1.0"]}
+
+
+def test_versions_only_referenced_skips_unresolved_ranges(conditional_recipes):
+    versions = DependenciesAnalyzer(conditional_recipes).analyze(no_cache=True).get_versions(only_referenced=True)
+    assert versions["libc"] == []
+    assert "None" not in json.dumps(versions)

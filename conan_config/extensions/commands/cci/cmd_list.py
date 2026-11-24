@@ -79,7 +79,17 @@ def list_versions(conan_api: ConanAPI, parser, subparser, *args):
     recipe_version_map: Dict[str, List[str]] = {}
     versions: List[int] = []
 
+    # --only-default / --fallback filter the dependency edges behind --only-referenced; on their own
+    # they would be silently ignored, as plain version listing comes from config.yml only
+    if args.only_default and not args.only_referenced:
+        raise ConanException("--only-default requires --only-referenced")
+    if args.fallback and not args.only_default:
+        raise ConanException("--fallback requires --only-default")
+
     analyzer = DependenciesAnalyzer(Path(args.recipes_path)).analyze(no_cache=args.no_cache)
+    if args.only_default:
+        # Resolve which dependencies are enabled by default (same as list usages --only-default)
+        analyzer.evaluate(conan_api, fallback=args.fallback, no_cache=args.no_cache)
     recipe_version_map = analyzer.get_versions(
         args.reference,
         min_filter,
@@ -88,8 +98,11 @@ def list_versions(conan_api: ConanAPI, parser, subparser, *args):
         only_default=args.only_default,
     )
     versions = [len(versions) for _, versions in recipe_version_map.items()]
-    avg = sum(versions) / len(versions)
-    std_deviation = (sum((num_versions - avg) ** 2 for num_versions in versions) / len(versions)) ** 0.5
+    # No recipe may pass the filters (e.g. --min above every recipe's count)
+    avg = sum(versions) / len(versions) if versions else 0.0
+    std_deviation = (
+        (sum((num_versions - avg) ** 2 for num_versions in versions) / len(versions)) ** 0.5 if versions else 0.0
+    )
 
     return {
         "versions": sorted(recipe_version_map.items(), key=lambda x: len(x[1]), reverse=True),

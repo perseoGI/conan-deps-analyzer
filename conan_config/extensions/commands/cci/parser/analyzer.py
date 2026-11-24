@@ -377,7 +377,8 @@ class DependenciesAnalyzer:
         if only_referenced:
             usages = self.get_usages(ref, only_default=only_default)
             for recipe_name, usages_per_version in usages.items():
-                recipe_versions = list(usages_per_version.keys())
+                # None: referenced through a version range that matches no existing version
+                recipe_versions = [v for v in usages_per_version.keys() if v is not None]
                 num_versions = len(recipe_versions)
                 if num_versions >= min_filter and (not max_filter or num_versions <= max_filter):
                     recipe_version_map[recipe_name] = [
