@@ -4,12 +4,78 @@ from conan.tools.scm import Version
 from conan.errors import ConanException
 from conan.api.conan_api import ConanAPI
 from functools import lru_cache
-import shelve
+import atexit
 import functools
 import hashlib
+import os
 import pickle
+import tempfile
 
-CACHE_DB_PATH = Path(__file__).parent / ".conan2_parser"
+CACHE_DB_PATH = Path(__file__).parent / ".conan2_parser.pickle"
+
+try:
+    _YAML_LOADER = yaml.CSafeLoader  # libyaml bindings, ~10x faster than the pure Python loader
+except AttributeError:  # pragma: no cover - depends on how PyYAML was built
+    _YAML_LOADER = yaml.SafeLoader
+
+
+def _yaml_load(stream):
+    return yaml.load(stream, Loader=_YAML_LOADER)
+
+
+class _PersistentCache:
+    """
+    Whole-file pickle cache: loaded once on first access and written back once at exit (only if it
+    changed). Opening a dbm/shelve database per recipe dominated the run time when the cache was warm.
+    Each entry keeps its result pickled, so every hit returns a fresh copy that callers may mutate.
+    """
+
+    def __init__(self, path: Path):
+        self.path = path
+        self._entries: dict | None = None
+        self._dirty = False
+
+    @property
+    def entries(self) -> dict:
+        if self._entries is None:
+            self._entries = self._load()
+            atexit.register(self.flush)
+        return self._entries
+
+    def _load(self) -> dict:
+        try:
+            with open(self.path, "rb") as f:
+                data = pickle.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            # Missing, corrupted or written by an incompatible version: start from scratch
+            return {}
+
+    def get(self, key):
+        return self.entries.get(key)
+
+    def set(self, key, value):
+        self.entries[key] = value
+        self._dirty = True
+
+    def delete(self, key):
+        if self.entries.pop(key, None) is not None:
+            self._dirty = True
+
+    def flush(self):
+        if not self._dirty or self._entries is None:
+            return
+        try:
+            fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=self.path.name, suffix=".tmp")
+            with os.fdopen(fd, "wb") as f:
+                pickle.dump(self._entries, f, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(tmp, self.path)  # atomic: concurrent runs never see a half-written file
+            self._dirty = False
+        except OSError:
+            pass
+
+
+_CACHE = _PersistentCache(CACHE_DB_PATH)
 
 
 def _hash_args(*args, **kwargs):
@@ -52,44 +118,48 @@ def persistent_cache_by_file_mtime(func):
         args_without_conan_api = [arg for arg in args if not isinstance(arg, ConanAPI)]
         call_hash = _hash_args(file_path, *args_without_conan_api)
 
-        with shelve.open(CACHE_DB_PATH) as db:
-            if not no_cache:
-                cached_entry = db.get(call_hash)
-                if (
-                    cached_entry
-                    and cached_entry["mtime"] == mtime
-                    and "files" in cached_entry  # entries from older versions don't track files
-                    and _files_unchanged(cached_entry["files"])
-                ):
-                    result = pickle.loads(cached_entry["result"])
-                    # Let an enclosing cached call know which files this result depended on
-                    for path in cached_entry["files"]:
-                        _track_file(Path(path))
-                    return result
-            _tracked_files.append(set())
-            try:
-                result = func(file_path, *args, **kwargs)
-            finally:
-                read_files = _tracked_files.pop()
-            for path in read_files:
-                _track_file(path)
-            # Always store result in the cache
-            db[call_hash] = {
+        if not no_cache:
+            cached_entry = _CACHE.get(call_hash)
+            if (
+                cached_entry
+                and cached_entry["mtime"] == mtime
+                and "files" in cached_entry  # entries from older versions don't track files
+                and _files_unchanged(cached_entry["files"])
+            ):
+                result = pickle.loads(cached_entry["result"])
+                # Let an enclosing cached call know which files this result depended on
+                for path in cached_entry["files"]:
+                    _track_file(Path(path))
+                return result
+        _tracked_files.append(set())
+        try:
+            result = func(file_path, *args, **kwargs)
+        finally:
+            read_files = _tracked_files.pop()
+        for path in read_files:
+            _track_file(path)
+        # Always store result in the cache
+        _CACHE.set(
+            call_hash,
+            {
                 "mtime": mtime,
                 "result": pickle.dumps(result),
                 "files": {str(path): _mtime_or_none(path) for path in read_files},
-            }
-            return result
+            },
+        )
+        return result
 
     return wrapper
 
 
+def flush_cache():
+    """Persist pending cache changes now (also done automatically at interpreter exit)."""
+    _CACHE.flush()
+
+
 def invalidate_cache_entry(file_path: Path):
     """Invalidate the cache entry for a specific file path."""
-    call_hash = _hash_args(file_path)
-    with shelve.open(CACHE_DB_PATH) as db:
-        if call_hash in db:
-            del db[call_hash]
+    _CACHE.delete(_hash_args(file_path))
 
 
 def get_available_versions(recipe_path: Path):
@@ -103,12 +173,12 @@ def get_available_versions_from_config(config_path: Path, folder: str | None = N
     return _get_available_versions_from_config(config_path, folder)
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=None)
 def _get_available_versions_from_config(config_path: Path, folder: str | None = None):
     # Error control
     with open(config_path, "r") as f:
         try:
-            config = yaml.safe_load(f)
+            config = _yaml_load(f)
         except yaml.YAMLError as e:
             raise ConanException(f"Error parsing YAML file {config_path}: {e}")
     if not config or "versions" not in config or not isinstance(config["versions"], dict):
@@ -128,12 +198,12 @@ def get_conandata(recipe_path: Path):
     return _get_conandata(recipe_path)
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=None)
 def _get_conandata(recipe_path: Path):
     conandata_path = recipe_path.parent / "conandata.yml"
     with open(conandata_path, "r") as f:
         try:
-            return yaml.safe_load(f)
+            return _yaml_load(f)
         except yaml.YAMLError as e:
             raise ConanException(f"Error parsing YAML file {conandata_path}: {e}")
 

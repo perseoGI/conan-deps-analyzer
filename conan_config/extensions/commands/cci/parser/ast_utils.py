@@ -33,14 +33,27 @@ class LocalAssignmentFinder(ast.NodeVisitor):
 
 def link_ast(node, parent=None):
     """
-    Recursively annotate each AST node with `.parent` and `.back` (previous sibling) attributes.
+    Annotate each AST node with `.parent` and `.back` (previous sibling) attributes.
+    Children of the root get `parent` (None by default); deeper nodes get their real parent.
+    Iterative to avoid Python recursion overhead on ~1M nodes when indexing a whole repository.
     """
-    prev = None
-    for child in ast.iter_child_nodes(node):
-        child.parent = parent
-        if prev:
-            child.back = prev
-        else:
-            child.back = None
-        link_ast(child, parent=child)
-        prev = child
+    AST = ast.AST
+    stack = [(node, parent)]
+    while stack:
+        current, current_parent = stack.pop()
+        prev = None
+        for field in current._fields:
+            value = getattr(current, field, None)
+            if isinstance(value, AST):
+                children = (value,)
+            elif isinstance(value, list):
+                children = value
+            else:
+                continue
+            for child in children:
+                if not isinstance(child, AST):
+                    continue
+                child.parent = current_parent
+                child.back = prev
+                stack.append((child, child))
+                prev = child

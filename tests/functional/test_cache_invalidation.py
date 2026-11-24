@@ -13,7 +13,7 @@ from parser.dependency_extractor import extract_conan_dependencies
 @pytest.fixture
 def recipes(tmp_path, monkeypatch):
     """Copy of the cases needed by range-consumer, with an isolated cache database."""
-    monkeypatch.setattr(utils, "CACHE_DB_PATH", tmp_path / "cache_db")
+    monkeypatch.setattr(utils, "_CACHE", utils._PersistentCache(tmp_path / "cache.pickle"))
     root = tmp_path / "recipes"
     for case in ("range-consumer", "map", "property-fstring", "version-conds"):
         shutil.copytree(CASES_ROOT / case, root / case, ignore=shutil.ignore_patterns("__pycache__", "*.py[co]"))
