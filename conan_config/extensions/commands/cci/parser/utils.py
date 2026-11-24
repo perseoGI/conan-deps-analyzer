@@ -18,7 +18,33 @@ def _hash_args(*args, **kwargs):
     return hashlib.sha256(key_data).hexdigest()
 
 
+# Stack of sets collecting the YAML files read while a cached function runs (one set per nested call)
+_tracked_files: list[set[Path]] = []
+
+
+def _track_file(path: Path):
+    for files in _tracked_files:
+        files.add(Path(path))
+
+
+def _mtime_or_none(path: Path):
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _files_unchanged(files: dict) -> bool:
+    return all(_mtime_or_none(Path(path)) == mtime for path, mtime in files.items())
+
+
 def persistent_cache_by_file_mtime(func):
+    """
+    Cache results on disk, keyed by the arguments. An entry is valid while neither `file_path` nor any
+    YAML file read through this module during the call (the recipe's config.yml/conandata.yml and the
+    config.yml of dependencies whose version ranges were resolved) has been modified.
+    """
+
     @functools.wraps(func)
     def wrapper(file_path: Path, *args, **kwargs):
         no_cache = kwargs.pop("no_cache", True)
@@ -29,13 +55,29 @@ def persistent_cache_by_file_mtime(func):
         with shelve.open(CACHE_DB_PATH) as db:
             if not no_cache:
                 cached_entry = db.get(call_hash)
-                if cached_entry and cached_entry["mtime"] == mtime:
-                    return pickle.loads(cached_entry["result"])
-            result = func(file_path, *args, **kwargs)
+                if (
+                    cached_entry
+                    and cached_entry["mtime"] == mtime
+                    and "files" in cached_entry  # entries from older versions don't track files
+                    and _files_unchanged(cached_entry["files"])
+                ):
+                    result = pickle.loads(cached_entry["result"])
+                    # Let an enclosing cached call know which files this result depended on
+                    for path in cached_entry["files"]:
+                        _track_file(Path(path))
+                    return result
+            _tracked_files.append(set())
+            try:
+                result = func(file_path, *args, **kwargs)
+            finally:
+                read_files = _tracked_files.pop()
+            for path in read_files:
+                _track_file(path)
             # Always store result in the cache
             db[call_hash] = {
                 "mtime": mtime,
                 "result": pickle.dumps(result),
+                "files": {str(path): _mtime_or_none(path) for path in read_files},
             }
             return result
 
@@ -56,8 +98,13 @@ def get_available_versions(recipe_path: Path):
     return get_available_versions_from_config(config_path, folder)
 
 
-@lru_cache(maxsize=32)
 def get_available_versions_from_config(config_path: Path, folder: str | None = None):
+    _track_file(config_path)
+    return _get_available_versions_from_config(config_path, folder)
+
+
+@lru_cache(maxsize=32)
+def _get_available_versions_from_config(config_path: Path, folder: str | None = None):
     # Error control
     with open(config_path, "r") as f:
         try:
@@ -76,8 +123,13 @@ def get_available_versions_from_config(config_path: Path, folder: str | None = N
     )
 
 
-@lru_cache(maxsize=32)
 def get_conandata(recipe_path: Path):
+    _track_file(recipe_path.parent / "conandata.yml")
+    return _get_conandata(recipe_path)
+
+
+@lru_cache(maxsize=32)
+def _get_conandata(recipe_path: Path):
     conandata_path = recipe_path.parent / "conandata.yml"
     with open(conandata_path, "r") as f:
         try:

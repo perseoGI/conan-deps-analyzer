@@ -130,8 +130,8 @@ def list_usages(conan_api: ConanAPI, parser, subparser, *args):
         default=False,
     )
     args = parser.parse_args(*args)
-    if not args.reference:
-        raise ConanException("missing-binaries requires --reference")
+    if args.transitive and not args.reference:
+        raise ConanException("--transitive requires --reference")
     profile_host, profile_build = resolve_profile_args(conan_api, args)
     return (
         DependenciesAnalyzer(Path(args.recipes_path))
