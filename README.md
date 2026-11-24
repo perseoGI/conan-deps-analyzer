@@ -123,7 +123,12 @@ conan cci:list versions /path/to/recipes --min 5 --max 10 --count
 
 # Only versions that are actually referenced by other recipes
 conan cci:list versions /path/to/recipes -r openssl --only-referenced
+
+# Only versions referenced by dependencies enabled by default (the cross-reference check trim-versions uses)
+conan cci:list versions /path/to/recipes --only-referenced --only-default
 ```
+
+`--only-default` (and `--fallback`) only apply together with `--only-referenced`, since plain version listing comes from `config.yml` alone.
 
 ### ✂️ `conan cci:trim-versions`
 
