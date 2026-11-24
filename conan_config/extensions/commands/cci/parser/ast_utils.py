@@ -31,16 +31,42 @@ class LocalAssignmentFinder(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def link_ast(node, parent=None):
+def link_ast(node, parent=None, skip=None):
     """
-    Recursively annotate each AST node with `.parent` and `.back` (previous sibling) attributes.
+    Annotate each AST node with `.parent` and `.back` (previous sibling) attributes.
+    Children of the root get `parent` (None by default); deeper nodes get their real parent.
+    `skip(child)` returning True links that child but not its descendants.
+    Iterative to avoid Python recursion overhead on ~1M nodes when indexing a whole repository.
+    Returns the linked nodes, so callers can break the parent<->child reference cycles with
+    `unlink_ast` and let the tree be freed by reference counting instead of the cyclic GC.
     """
-    prev = None
-    for child in ast.iter_child_nodes(node):
-        child.parent = parent
-        if prev:
-            child.back = prev
-        else:
-            child.back = None
-        link_ast(child, parent=child)
-        prev = child
+    AST = ast.AST
+    linked = []
+    stack = [(node, parent)]
+    while stack:
+        current, current_parent = stack.pop()
+        prev = None
+        for field in current._fields:
+            value = getattr(current, field, None)
+            if isinstance(value, AST):
+                children = (value,)
+            elif isinstance(value, list):
+                children = value
+            else:
+                continue
+            for child in children:
+                if not isinstance(child, AST):
+                    continue
+                child.parent = current_parent
+                child.back = prev
+                linked.append(child)
+                if skip is None or not skip(child):
+                    stack.append((child, child))
+                prev = child
+    return linked
+
+
+def unlink_ast(linked_nodes):
+    """Drop the `.parent` links set by `link_ast` (the only ones that form reference cycles)."""
+    for node in linked_nodes:
+        node.parent = None

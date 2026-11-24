@@ -1,4 +1,7 @@
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
+import gc
+import os
 from pathlib import Path
 from parser.recipe_dependencies import RecipeDependencies, Dependencies, Meta, Usages
 from parser.package_id import (
@@ -7,12 +10,13 @@ from parser.package_id import (
     version_change_affects_package_id,
 )
 from parser.utils import (
+    MISS,
     get_available_versions_from_config,
     is_version_range,
     new_version_would_be_selected,
     version_range_intersects,
 )
-from parser.dependency_extractor import extract_conan_dependencies
+from parser.dependency_extractor import compute_conan_dependencies, extract_conan_dependencies
 from conan.internal.model.profile import Profile
 from conan.errors import ConanException
 from parser.condition import NoCondition
@@ -21,19 +25,79 @@ from conan.tools.scm import Version
 from conan.api.conan_api import ConanAPI
 
 
+# Below this many recipes to parse, starting worker processes costs more than it saves
+_PARALLEL_MIN_RECIPES = 200
+_MAX_DEFAULT_JOBS = 8
+
+
+def _parallel_jobs(pending: int) -> int:
+    """
+    Worker processes to parse `pending` recipes with. CCI_PARSER_JOBS overrides the default
+    (one per CPU, up to _MAX_DEFAULT_JOBS); 1 disables multiprocessing.
+    """
+    if pending < _PARALLEL_MIN_RECIPES:
+        return 1
+    env = os.environ.get("CCI_PARSER_JOBS")
+    if env:
+        try:
+            return max(1, int(env))
+        except ValueError:
+            raise ConanException(f"CCI_PARSER_JOBS must be an integer, got: {env}")
+    cpus = os.process_cpu_count() if hasattr(os, "process_cpu_count") else os.cpu_count()
+    return max(1, min(cpus or 1, _MAX_DEFAULT_JOBS))
+
+
 class DependenciesAnalyzer:
     def __init__(self, path: Path):
         self.recipe_paths = self._get_recipe_paths(path)
         self.dependencies: Dict[str, List[RecipeDependencies]] = {}
         self.with_profiles = False
+        self._usages_index_cache: Dict[str, List[Tuple[str, str, Meta]]] | None = None
 
     def analyze(self, no_cache: bool):
+        # Parsing creates ~1M short-lived AST nodes; with the cyclic GC on, it repeatedly rescans
+        # everything alive (~25% of a cold run). Trees are freed by reference counting
+        # (extract_conan_dependencies breaks their cycles), so it can be paused safely.
+        gc_was_enabled = gc.isenabled()
+        gc.disable()
+        try:
+            results = {}
+            if not no_cache:
+                for path in self.recipe_paths:
+                    result = extract_conan_dependencies.lookup(path)  # type: ignore[attr-defined]
+                    if result is not MISS:
+                        results[path] = result
+            pending = [path for path in self.recipe_paths if path not in results]
+            jobs = _parallel_jobs(len(pending))
+            if jobs > 1:
+                results.update(self._extract_in_parallel(pending, jobs))
+            else:
+                for path in pending:
+                    results[path] = extract_conan_dependencies(path, no_cache=True)
+        finally:
+            if gc_was_enabled:
+                gc.enable()
         for conanfile_path in self.recipe_paths:
             recipe_name = conanfile_path.parent.parent.name
-            self.dependencies.setdefault(recipe_name, []).append(
-                extract_conan_dependencies(conanfile_path, no_cache=no_cache)
-            )
+            self.dependencies.setdefault(recipe_name, []).append(results[conanfile_path])
+        self._usages_index_cache = None
         return self
+
+    @staticmethod
+    def _extract_in_parallel(paths: List[Path], jobs: int) -> Dict[Path, RecipeDependencies]:
+        """Parse recipes in worker processes; results are cached here, in the parent."""
+        mtimes = {path: path.stat().st_mtime for path in paths}
+        chunksize = max(1, len(paths) // (jobs * 8))
+        results = {}
+        with ProcessPoolExecutor(max_workers=jobs, initializer=gc.disable) as executor:
+            for path, (result, read_files) in zip(
+                paths, executor.map(compute_conan_dependencies, paths, chunksize=chunksize)
+            ):
+                extract_conan_dependencies.store(  # type: ignore[attr-defined]
+                    path, result=result, read_files=read_files, mtime=mtimes[path]
+                )
+                results[path] = result
+        return results
 
     def evaluate(
         self,
@@ -148,15 +212,39 @@ class DependenciesAnalyzer:
         only_version_range: bool = False,
     ) -> Dict[str, Usages]:
         result = {}
+        # (recipe, version) pairs already expanded: _get_usages is deterministic, so expanding a pair
+        # again only repeats work (exponential on deep graphs) and never terminates on cycles.
+        processed: set[tuple[str, str]] = set()
         while to_process:
-            recipe_name, version = to_process.pop()
+            item = to_process.pop()
+            if item in processed:
+                continue
+            processed.add(item)
+            recipe_name, version = item
             usages = self._get_usages(recipe_name, version, only_default, only_version_range=only_version_range)
             if recipe_name not in result:
                 result[recipe_name] = usages
             else:
                 result[recipe_name].update(usages)
-            to_process.update(self._add_transitives_to_process(usages))
+            to_process.update(self._add_transitives_to_process(usages) - processed)
         return result
+
+    def _usages_index(self) -> Dict[str, List[Tuple[str, str, Meta]]]:
+        """
+        Reverse index {dependency: [(consumer, consumer_version, meta)]}, built once in the same
+        iteration order as a full scan so results keep their ordering. Meta objects are shared, so
+        `meta.default` reflects any later evaluate().
+        """
+        if self._usages_index_cache is None:
+            index: Dict[str, List[Tuple[str, str, Meta]]] = defaultdict(list)
+            for recipe, dependency_list in self.dependencies.items():
+                for deps in dependency_list:
+                    for version, dependencies in deps.deps.items():
+                        for dep, meta_list in dependencies.items():
+                            for meta in meta_list:
+                                index[dep].append((recipe, version, meta))
+            self._usages_index_cache = index
+        return self._usages_index_cache
 
     def _add_transitives_to_process(self, usages):
         to_process = set()
@@ -177,42 +265,37 @@ class DependenciesAnalyzer:
         result: Usages = defaultdict(dict)
         version_range = is_version_range(version_filter) if version_filter else False
 
-        for recipe, dependency_list in self.dependencies.items():
+        for recipe, version, meta in self._usages_index().get(recipe_name, ()):
             if recipe == recipe_name:
                 continue
-            for deps in dependency_list:
-                for version, dependencies in deps.deps.items():
-                    for dep, meta_list in dependencies.items():
-                        for meta in meta_list:
-                            if dep == recipe_name:
-                                if version_range:
-                                    if meta.version_range:
-                                        add_usage = version_range_intersects(version_filter, meta.version_range)
-                                    else:
-                                        add_usage = Version(meta.version).in_range(version_filter[1:-1])
-                                elif version_filter:
-                                    add_usage = version_filter == meta.version
-                                else:
-                                    add_usage = True
+            if version_range:
+                if meta.version_range:
+                    add_usage = version_range_intersects(version_filter, meta.version_range)
+                else:
+                    add_usage = Version(meta.version).in_range(version_filter[1:-1])
+            elif version_filter:
+                add_usage = version_filter == meta.version
+            else:
+                add_usage = True
 
-                                if add_usage:
-                                    if only_version_range and not meta.version_range:
-                                        continue
-                                    default_usage = meta.default
-                                    if not only_default or default_usage:
-                                        # TODO
-                                        if meta.version not in result:
-                                            result[meta.version] = defaultdict(list)
-                                        result[meta.version][recipe].append(
-                                            Meta(
-                                                version=version,
-                                                conditions=NoCondition() if only_default else meta.conditions,
-                                                requires=meta.requires,
-                                                tool_requires=meta.tool_requires,
-                                                default=default_usage,
-                                                version_range=meta.version_range,
-                                            )
-                                        )
+            if add_usage:
+                if only_version_range and not meta.version_range:
+                    continue
+                default_usage = meta.default
+                if not only_default or default_usage:
+                    # TODO
+                    if meta.version not in result:
+                        result[meta.version] = defaultdict(list)
+                    result[meta.version][recipe].append(
+                        Meta(
+                            version=version,
+                            conditions=NoCondition() if only_default else meta.conditions,
+                            requires=meta.requires,
+                            tool_requires=meta.tool_requires,
+                            default=default_usage,
+                            version_range=meta.version_range,
+                        )
+                    )
         return result
 
     @staticmethod
@@ -323,12 +406,29 @@ class DependenciesAnalyzer:
         conanfiles = []
         if path.is_file() and path.name == "conanfile.py":
             conanfiles.append(path)
-        for conanfile in path.rglob("conanfile.py"):
-            # Avoid test_packages
-            if not (conanfile.parent / "conandata.yml").exists():
-                continue
-            conanfiles.append(conanfile)
+        elif path.is_dir():
+            self._collect_recipe_paths(path, conanfiles)
         return conanfiles
+
+    @classmethod
+    def _collect_recipe_paths(cls, folder: Path, conanfiles: List[Path]):
+        """
+        Find every conanfile.py with a sibling conandata.yml (skipping test_packages). Recipe folders
+        are not descended into: they only hold test_package/, patches/, etc., and walking those
+        (~40k dirs in CCI) was most of the indexing time.
+        """
+        conanfile = folder / "conanfile.py"
+        # Two stats are cheaper than listing the folder, and most visited folders are recipes
+        if conanfile.is_file() and (folder / "conandata.yml").is_file():
+            conanfiles.append(conanfile)
+            return
+        try:
+            with os.scandir(folder) as it:
+                subfolders = sorted(entry.name for entry in it if entry.is_dir(follow_symlinks=False))
+        except OSError:
+            return
+        for name in subfolders:
+            cls._collect_recipe_paths(folder / name, conanfiles)
 
 
 if __name__ == "__main__":

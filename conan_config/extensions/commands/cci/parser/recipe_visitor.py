@@ -5,6 +5,16 @@ from parser.utils import get_available_versions, get_conandata
 from parser.ast_utils import LocalAssignmentFinder, OPERATOR_MAP
 
 
+# Methods whose bodies are analyzed. Everything the visitor collects lives at class level or inside
+# these methods, and parent/sibling links are only followed upwards from calls inside them.
+REQUIREMENT_METHODS = ("requirements", "build_requirements")
+
+
+def is_irrelevant_method(node: ast.AST) -> bool:
+    """True for a method whose body cannot affect the extracted requirements (build, package_info...)."""
+    return isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name not in REQUIREMENT_METHODS
+
+
 class RecipeVisitor(ast.NodeVisitor):
     def __init__(self, conanfile_path: Path):
         self.current_method = None
@@ -46,9 +56,11 @@ class RecipeVisitor(ast.NodeVisitor):
     def visit_FunctionDef(self, node):
         self.current_method = node.name
         self.visit_property(node)
-        if self.current_method in ("requirements", "build_requirements"):
+        if self.current_method in REQUIREMENT_METHODS:
             self.local_assignments[self.current_method] = self.find_local_assignments(node)
-        self.generic_visit(node)
+            self.generic_visit(node)
+        # Other methods (build, package_info, generate...) are most of a recipe and contribute
+        # nothing: properties are read from the def node itself, so their bodies are not walked.
         self.current_method = None
 
     def visit_Call(self, node):
