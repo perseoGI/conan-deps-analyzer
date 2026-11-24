@@ -17,7 +17,7 @@ The tool statically analyzes `conanfile.py` files using Python's AST to extract 
 - ✂️ **Version trimming** -- interactively remove old recipe versions based on cross-reference analysis and configurable heuristics, with automatic `config.yml`/`conandata.yml` cleanup and lint integration.
 - 🎯 **Profile-aware evaluation** -- resolve conditional dependencies (`if self.settings.os == ...`, `if self.options.foo`, etc.) against host/build profiles.
 - 🔄 **Fallback evaluation** -- when static analysis can't determine a condition's default, optionally fall back to loading the recipe with CCI profiles.
-- ⚡ **Caching** -- parsed results are persisted to a `shelve` database keyed by file modification time, making repeated queries fast.
+- ⚡ **Fast** -- a full Conan Center Index (~2000 recipes) is indexed in about 1 s from scratch, parsing recipes in parallel worker processes, and in about 0.5 s on later runs thanks to a persistent cache that is invalidated when a recipe, its `config.yml`/`conandata.yml`, a dependency's `config.yml` or the analyzer itself changes.
 
 ## 📥 Installation
 
@@ -155,3 +155,11 @@ conan cci:trim-versions /path/to/recipes --ignore-refs-file refs.json --confirm
 | `-pr:h`, `-pr:b` | Standard Conan profile arguments for host/build profile evaluation. |
 | `-f json` | Output in JSON format. |
 | `-f compact` | **list usages** / **list missing-binaries** only: output as a space-separated list of references. |
+
+### ⚡ Performance tuning
+
+| Environment variable | Description |
+|---|---|
+| `CCI_PARSER_JOBS` | Number of worker processes used to parse recipes when at least 200 of them are not cached (default: one per CPU, up to 8). `1` disables multiprocessing. |
+
+When using the analyzer as a library (e.g. from a service) rather than through the Conan CLI, the entry script must guard its top-level code with `if __name__ == "__main__":`, as required by Python's `multiprocessing` on platforms that spawn worker processes (macOS, Windows, and Linux since Python 3.14).

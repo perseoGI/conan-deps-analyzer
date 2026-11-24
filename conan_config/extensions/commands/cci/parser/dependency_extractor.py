@@ -1,6 +1,6 @@
 from parser.utils import persistent_cache_by_file_mtime
-from parser.recipe_visitor import RecipeVisitor
-from parser.ast_utils import link_ast
+from parser.recipe_visitor import RecipeVisitor, is_irrelevant_method
+from parser.ast_utils import link_ast, unlink_ast
 from parser.evaluator import ConditionEvaluator
 from parser.recipe_dependencies import RecipeDependencies
 from parser.utils import get_available_versions
@@ -17,17 +17,26 @@ def extract_conan_dependencies(recipe_path: Path):
     with tokenize.open(recipe_path) as f:
         recipe_source = f.read()
     tree = ast.parse(recipe_source, filename=recipe_path)
-    link_ast(tree)
-    visitor = RecipeVisitor(recipe_path)
-    visitor.visit(tree)
+    linked = link_ast(tree, skip=is_irrelevant_method)
+    try:
+        visitor = RecipeVisitor(recipe_path)
+        visitor.visit(tree)
 
-    versions = get_available_versions(recipe_path)
-    deps = RecipeDependencies(versions, recipe_path)
-    for node, conditions in visitor.requirements:
-        extract_requirement(deps, visitor, node, conditions, "requires")
-    for node, conditions in visitor.tool_requirements:
-        extract_requirement(deps, visitor, node, conditions, "tool_requires")
-    return deps
+        versions = get_available_versions(recipe_path)
+        deps = RecipeDependencies(versions, recipe_path)
+        for node, conditions in visitor.requirements:
+            extract_requirement(deps, visitor, node, conditions, "requires")
+        for node, conditions in visitor.tool_requirements:
+            extract_requirement(deps, visitor, node, conditions, "tool_requires")
+        return deps
+    finally:
+        # The result keeps no AST nodes: without cycles the whole tree is freed right away
+        unlink_ast(linked)
+
+
+def compute_conan_dependencies(recipe_path: Path):
+    """Worker-process entry point: parse a recipe without touching the cache (see analyzer.analyze)."""
+    return extract_conan_dependencies.compute(recipe_path)  # type: ignore[attr-defined]
 
 
 def extract_requirement(deps: RecipeDependencies, visitor: RecipeVisitor, node, conditions, dep_type: str):

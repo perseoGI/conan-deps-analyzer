@@ -1,4 +1,6 @@
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
+import gc
 import os
 from pathlib import Path
 from parser.recipe_dependencies import RecipeDependencies, Dependencies, Meta, Usages
@@ -8,18 +10,41 @@ from parser.package_id import (
     version_change_affects_package_id,
 )
 from parser.utils import (
+    MISS,
     get_available_versions_from_config,
     is_version_range,
     new_version_would_be_selected,
     version_range_intersects,
 )
-from parser.dependency_extractor import extract_conan_dependencies
+from parser.dependency_extractor import compute_conan_dependencies, extract_conan_dependencies
 from conan.internal.model.profile import Profile
 from conan.errors import ConanException
 from parser.condition import NoCondition
 from typing import Dict, List, Tuple
 from conan.tools.scm import Version
 from conan.api.conan_api import ConanAPI
+
+
+# Below this many recipes to parse, starting worker processes costs more than it saves
+_PARALLEL_MIN_RECIPES = 200
+_MAX_DEFAULT_JOBS = 8
+
+
+def _parallel_jobs(pending: int) -> int:
+    """
+    Worker processes to parse `pending` recipes with. CCI_PARSER_JOBS overrides the default
+    (one per CPU, up to _MAX_DEFAULT_JOBS); 1 disables multiprocessing.
+    """
+    if pending < _PARALLEL_MIN_RECIPES:
+        return 1
+    env = os.environ.get("CCI_PARSER_JOBS")
+    if env:
+        try:
+            return max(1, int(env))
+        except ValueError:
+            raise ConanException(f"CCI_PARSER_JOBS must be an integer, got: {env}")
+    cpus = os.process_cpu_count() if hasattr(os, "process_cpu_count") else os.cpu_count()
+    return max(1, min(cpus or 1, _MAX_DEFAULT_JOBS))
 
 
 class DependenciesAnalyzer:
@@ -30,13 +55,49 @@ class DependenciesAnalyzer:
         self._usages_index_cache: Dict[str, List[Tuple[str, str, Meta]]] | None = None
 
     def analyze(self, no_cache: bool):
+        # Parsing creates ~1M short-lived AST nodes; with the cyclic GC on, it repeatedly rescans
+        # everything alive (~25% of a cold run). Trees are freed by reference counting
+        # (extract_conan_dependencies breaks their cycles), so it can be paused safely.
+        gc_was_enabled = gc.isenabled()
+        gc.disable()
+        try:
+            results = {}
+            if not no_cache:
+                for path in self.recipe_paths:
+                    result = extract_conan_dependencies.lookup(path)  # type: ignore[attr-defined]
+                    if result is not MISS:
+                        results[path] = result
+            pending = [path for path in self.recipe_paths if path not in results]
+            jobs = _parallel_jobs(len(pending))
+            if jobs > 1:
+                results.update(self._extract_in_parallel(pending, jobs))
+            else:
+                for path in pending:
+                    results[path] = extract_conan_dependencies(path, no_cache=True)
+        finally:
+            if gc_was_enabled:
+                gc.enable()
         for conanfile_path in self.recipe_paths:
             recipe_name = conanfile_path.parent.parent.name
-            self.dependencies.setdefault(recipe_name, []).append(
-                extract_conan_dependencies(conanfile_path, no_cache=no_cache)
-            )
+            self.dependencies.setdefault(recipe_name, []).append(results[conanfile_path])
         self._usages_index_cache = None
         return self
+
+    @staticmethod
+    def _extract_in_parallel(paths: List[Path], jobs: int) -> Dict[Path, RecipeDependencies]:
+        """Parse recipes in worker processes; results are cached here, in the parent."""
+        mtimes = {path: path.stat().st_mtime for path in paths}
+        chunksize = max(1, len(paths) // (jobs * 8))
+        results = {}
+        with ProcessPoolExecutor(max_workers=jobs, initializer=gc.disable) as executor:
+            for path, (result, read_files) in zip(
+                paths, executor.map(compute_conan_dependencies, paths, chunksize=chunksize)
+            ):
+                extract_conan_dependencies.store(  # type: ignore[attr-defined]
+                    path, result=result, read_files=read_files, mtime=mtimes[path]
+                )
+                results[path] = result
+        return results
 
     def evaluate(
         self,
@@ -356,18 +417,18 @@ class DependenciesAnalyzer:
         are not descended into: they only hold test_package/, patches/, etc., and walking those
         (~40k dirs in CCI) was most of the indexing time.
         """
+        conanfile = folder / "conanfile.py"
+        # Two stats are cheaper than listing the folder, and most visited folders are recipes
+        if conanfile.is_file() and (folder / "conandata.yml").is_file():
+            conanfiles.append(conanfile)
+            return
         try:
             with os.scandir(folder) as it:
-                entries = sorted(it, key=lambda e: e.name)
+                subfolders = sorted(entry.name for entry in it if entry.is_dir(follow_symlinks=False))
         except OSError:
             return
-        names = {e.name for e in entries}
-        if "conanfile.py" in names and "conandata.yml" in names:
-            conanfiles.append(folder / "conanfile.py")
-            return
-        for entry in entries:
-            if entry.is_dir(follow_symlinks=False):
-                cls._collect_recipe_paths(Path(entry.path), conanfiles)
+        for name in subfolders:
+            cls._collect_recipe_paths(folder / name, conanfiles)
 
 
 if __name__ == "__main__":
