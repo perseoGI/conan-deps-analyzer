@@ -297,7 +297,9 @@ class DependenciesAnalyzer:
                 recipe_versions = list(usages_per_version.keys())
                 num_versions = len(recipe_versions)
                 if num_versions >= min_filter and (not max_filter or num_versions <= max_filter):
-                    recipe_version_map[recipe_name] = sorted([Version(v) for v in recipe_versions], reverse=True)
+                    recipe_version_map[recipe_name] = [
+                        str(v) for v in sorted((Version(v) for v in recipe_versions), reverse=True)
+                    ]
             return recipe_version_map
 
         if ref:
@@ -310,11 +312,11 @@ class DependenciesAnalyzer:
             ]
         else:
             for recipe_name, dependency_list in self.dependencies.items():
-                for deps_per_version in dependency_list:
-                    recipe_versions = deps_per_version.versions
-                    num_versions = len(recipe_versions)
-                    if num_versions >= min_filter and (not max_filter or num_versions <= max_filter):
-                        recipe_version_map[recipe_name] = recipe_versions
+                # A recipe may span several folders (all/, 2.x/...): count the versions of all of them
+                recipe_versions = [v for deps_per_version in dependency_list for v in deps_per_version.versions]
+                num_versions = len(recipe_versions)
+                if num_versions >= min_filter and (not max_filter or num_versions <= max_filter):
+                    recipe_version_map[recipe_name] = recipe_versions
         return recipe_version_map
 
     def _get_recipe_paths(self, path: Path):
